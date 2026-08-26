@@ -17,6 +17,7 @@ stop_service() {
         if kill -0 "$pid" 2>/dev/null; then
             # Kill the process group to catch child processes (e.g., Next.js workers)
             kill -- -$(ps -o pgid= -p "$pid" | tr -d ' ') 2>/dev/null || kill "$pid" 2>/dev/null
+            wait "$pid" 2>/dev/null
             echo "  ✓ Stopped $name (PID $pid)"
         else
             echo "  - $name was not running"

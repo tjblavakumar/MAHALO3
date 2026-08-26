@@ -15,7 +15,7 @@ echo ""
 echo "  [1/5] Starting Mock Jira on :5001..."
 cd "$PROJECT_DIR/mock-services/jira"
 source venv/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 5001 &
+uvicorn main:app --host 0.0.0.0 --port 5001 > /dev/null 2>&1 &
 echo $! > "$PIDS_DIR/jira.pid"
 deactivate
 
@@ -23,7 +23,7 @@ deactivate
 echo "  [2/5] Starting Mock Confluence on :5002..."
 cd "$PROJECT_DIR/mock-services/confluence"
 source venv/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 5002 &
+uvicorn main:app --host 0.0.0.0 --port 5002 > /dev/null 2>&1 &
 echo $! > "$PIDS_DIR/confluence.pid"
 deactivate
 
@@ -31,7 +31,7 @@ deactivate
 echo "  [3/5] Starting Mock GitHub on :5003..."
 cd "$PROJECT_DIR/mock-services/github"
 source venv/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 5003 &
+uvicorn main:app --host 0.0.0.0 --port 5003 > /dev/null 2>&1 &
 echo $! > "$PIDS_DIR/github.pid"
 deactivate
 
@@ -39,14 +39,14 @@ deactivate
 echo "  [4/5] Starting Backend on :8000..."
 cd "$PROJECT_DIR/backend"
 source venv/bin/activate
-uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+uvicorn app.main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
 echo $! > "$PIDS_DIR/backend.pid"
 deactivate
 
 # --- Frontend ---
 echo "  [5/5] Starting Frontend on :3000..."
 cd "$PROJECT_DIR/frontend"
-npm run dev -- -p 3000 &
+npm run dev -- -p 3000 > /dev/null 2>&1 &
 echo $! > "$PIDS_DIR/frontend.pid"
 
 # Wait for services to be ready
