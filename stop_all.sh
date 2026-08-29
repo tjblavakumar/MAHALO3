@@ -30,12 +30,13 @@ stop_service() {
 
 stop_service "frontend"
 stop_service "backend"
+stop_service "servicenow"
 stop_service "github"
 stop_service "confluence"
 stop_service "jira"
 
 # Also kill any orphaned processes on the known ports
-for port in 5001 5002 5003 8000 3000; do
+for port in 5001 5002 5003 5004 8008 3000; do
     pids=$(fuser ${port}/tcp 2>/dev/null | tr -s ' ')
     if [ -n "$pids" ]; then
         for pid in $pids; do

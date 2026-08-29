@@ -69,6 +69,7 @@ BRANCHES = {
     "repo-3": [
         {"name": "main", "protected": True, "last_commit": "2026-08-21"},
         {"name": "feature/AUTH-304-totp-2fa", "protected": False, "last_commit": "2026-08-21"},
+        {"name": "feature/AUTH-306-saml-sso", "protected": False, "last_commit": "2026-08-20"},
     ],
     "repo-4": [
         {"name": "main", "protected": True, "last_commit": "2026-08-18"},
@@ -206,6 +207,27 @@ PULL_REQUESTS = [
         ],
         "linked_story": "AUTH-304",
     },
+    {
+        "id": "pr-9",
+        "repo_id": "repo-3",
+        "number": 57,
+        "title": "feat: SAML 2.0 SSO for enterprise customers",
+        "description": "Adds SAML-based single sign-on with IdP- and SP-initiated flows and JIT provisioning. Linked to AUTH-306.",
+        "author": "Lava Dev",
+        "author_id": "dev-6",
+        "status": "open",
+        "branch": "feature/AUTH-306-saml-sso",
+        "target_branch": "main",
+        "created_at": "2026-08-17",
+        "updated_at": "2026-08-20",
+        "additions": 388,
+        "deletions": 19,
+        "files_changed": 10,
+        "reviews": [
+            {"reviewer": "Raj Patel", "status": "commented", "date": "2026-08-19"},
+        ],
+        "linked_story": "AUTH-306",
+    },
     # Product service PRs
     {
         "id": "pr-7",
@@ -276,6 +298,10 @@ COMMITS = [
     {"id": "c020", "repo_id": "repo-3", "branch": "feature/AUTH-304-totp-2fa", "author": "Raj Patel", "author_id": "dev-3", "message": "feat: backup codes generation and validation", "date": "2026-08-16", "additions": 134, "deletions": 12},
     {"id": "c021", "repo_id": "repo-3", "branch": "feature/AUTH-304-totp-2fa", "author": "Raj Patel", "author_id": "dev-3", "message": "feat: 2FA prompt in login flow", "date": "2026-08-19", "additions": 98, "deletions": 15},
     {"id": "c022", "repo_id": "repo-3", "branch": "feature/AUTH-304-totp-2fa", "author": "Raj Patel", "author_id": "dev-3", "message": "test: comprehensive 2FA test suite", "date": "2026-08-21", "additions": 46, "deletions": 5},
+    {"id": "c031", "repo_id": "repo-3", "branch": "feature/AUTH-306-saml-sso", "author": "Lava Dev", "author_id": "dev-6", "message": "feat: SAML service provider metadata endpoint", "date": "2026-08-17", "additions": 132, "deletions": 4},
+    {"id": "c032", "repo_id": "repo-3", "branch": "feature/AUTH-306-saml-sso", "author": "Lava Dev", "author_id": "dev-6", "message": "feat: SP-initiated login flow and redirect binding", "date": "2026-08-18", "additions": 118, "deletions": 6},
+    {"id": "c033", "repo_id": "repo-3", "branch": "feature/AUTH-306-saml-sso", "author": "Lava Dev", "author_id": "dev-6", "message": "feat: just-in-time user provisioning on first SSO login", "date": "2026-08-19", "additions": 94, "deletions": 7},
+    {"id": "c034", "repo_id": "repo-3", "branch": "feature/AUTH-306-saml-sso", "author": "Lava Dev", "author_id": "dev-6", "message": "test: SAML assertion validation tests", "date": "2026-08-20", "additions": 44, "deletions": 2},
     # Product service commits
     {"id": "c023", "repo_id": "repo-4", "branch": "feature/PROD-403-recommendations", "author": "Emily Zhang", "author_id": "dev-4", "message": "feat: collaborative filtering model training pipeline", "date": "2026-08-13", "additions": 234, "deletions": 0},
     {"id": "c024", "repo_id": "repo-4", "branch": "feature/PROD-403-recommendations", "author": "Emily Zhang", "author_id": "dev-4", "message": "feat: recommendations API endpoint", "date": "2026-08-15", "additions": 178, "deletions": 12},
@@ -301,6 +327,7 @@ CONTRIBUTOR_STATS = {
     ],
     "repo-3": [
         {"author": "Raj Patel", "author_id": "dev-3", "commits": 18, "additions": 1890, "deletions": 312},
+        {"author": "Lava Dev", "author_id": "dev-6", "commits": 4, "additions": 388, "deletions": 19},
     ],
     "repo-4": [
         {"author": "Emily Zhang", "author_id": "dev-4", "commits": 25, "additions": 2345, "deletions": 189},

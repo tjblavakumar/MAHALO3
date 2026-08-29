@@ -14,6 +14,7 @@ class IntegrationType(str, enum.Enum):
     JIRA = "jira"
     CONFLUENCE = "confluence"
     GITHUB = "github"
+    SERVICENOW = "servicenow"
 
 
 class Integration(Base):

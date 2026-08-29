@@ -11,6 +11,7 @@ from app.agent.session import ChatMessage, get_or_create_session
 from app.agent.tools.confluence_tools import create_confluence_tools
 from app.agent.tools.github_tools import create_github_tools
 from app.agent.tools.jira_tools import create_jira_tools
+from app.agent.tools.servicenow_tools import create_servicenow_tools
 from app.models.integration import Integration
 from app.models.user import User
 
@@ -24,7 +25,7 @@ def _get_user_integrations(user_id: int, db: Session) -> list[Integration]:
 
 def _build_tools_map(integrations: list[Integration]) -> dict:
     """Build tools organized by type."""
-    tools_map = {"jira": [], "confluence": [], "github": []}
+    tools_map = {"jira": [], "confluence": [], "github": [], "servicenow": []}
     for integration in integrations:
         if integration.type.value == "jira":
             tools_map["jira"] = create_jira_tools(integration.url, integration.token)
@@ -32,6 +33,8 @@ def _build_tools_map(integrations: list[Integration]) -> dict:
             tools_map["confluence"] = create_confluence_tools(integration.url, integration.token)
         elif integration.type.value == "github":
             tools_map["github"] = create_github_tools(integration.url, integration.token)
+        elif integration.type.value == "servicenow":
+            tools_map["servicenow"] = create_servicenow_tools(integration.url, integration.token)
     return tools_map
 
 
@@ -155,14 +158,61 @@ async def demo_chat(
         if tools_map["jira"]:
             systems_queried.append("jira")
             project_id = _detect_project(msg_lower)
-            search_tool = next((t for t in tools_map["jira"] if t.name == "jira_search_stories"), None)
-            if search_tool:
-                # Try to find relevant stories
-                query = _extract_search_query(message)
-                kwargs = {"query": query}
-                if project_id:
-                    kwargs["project_id"] = project_id
-                tool_results.append(search_tool.invoke(kwargs))
+            status = _detect_status(msg_lower)
+
+            # If the user is asking about a specific person's work, resolve the
+            # person to a developer and use the assignee-based tool. This mirrors
+            # the real-life flow: resolve a name to an account, then filter.
+            assignee_ref = _detect_person(message, tools_map["jira"], current_user=user)
+
+            if assignee_ref:
+                by_assignee_tool = next(
+                    (t for t in tools_map["jira"] if t.name == "jira_get_stories_by_assignee"), None
+                )
+                if by_assignee_tool:
+                    kwargs = {"assignee": assignee_ref}
+                    if status:
+                        kwargs["status"] = status
+                    if project_id:
+                        kwargs["project_id"] = project_id
+                    tool_results.append(by_assignee_tool.invoke(kwargs))
+            else:
+                search_tool = next((t for t in tools_map["jira"] if t.name == "jira_search_stories"), None)
+                if search_tool:
+                    # Only pass a keyword if there is a meaningful topic term.
+                    query = _extract_story_keyword(message)
+                    kwargs = {}
+                    if query:
+                        kwargs["query"] = query
+                    if project_id:
+                        kwargs["project_id"] = project_id
+                    if status:
+                        kwargs["status"] = status
+                    tool_results.append(search_tool.invoke(kwargs))
+
+    # Deployment/incident/production questions -> ServiceNow
+    elif any(kw in msg_lower for kw in ["deploy", "deployment", "incident", "outage", "production issue", "rollback", "rolled back", "sev", "p1", "p2"]):
+        if tools_map["servicenow"]:
+            systems_queried.append("servicenow")
+            service = None
+            proj = _detect_project(msg_lower)
+            service_map = {"PAY": "payment-service", "CART": "cart-service", "AUTH": "auth-service", "PROD": "product-service", "ORD": "order-service"}
+            if proj:
+                service = service_map.get(proj)
+            if any(kw in msg_lower for kw in ["incident", "outage", "production issue", "sev", "p1", "p2"]):
+                inc_tool = next((t for t in tools_map["servicenow"] if t.name == "servicenow_list_incidents"), None)
+                if inc_tool:
+                    kwargs = {}
+                    if service:
+                        kwargs["service"] = service
+                    tool_results.append(inc_tool.invoke(kwargs))
+            else:
+                dep_tool = next((t for t in tools_map["servicenow"] if t.name == "servicenow_list_deployments"), None)
+                if dep_tool:
+                    kwargs = {}
+                    if service:
+                        kwargs["service"] = service
+                    tool_results.append(dep_tool.invoke(kwargs))
 
     # Documentation/security/architecture questions -> Confluence
     elif any(kw in msg_lower for kw in ["doc", "documentation", "security", "architecture", "pci", "compliance", "api spec", "design"]):
@@ -273,6 +323,113 @@ def _project_to_repo(project_id: str) -> Optional[str]:
     """Map project ID to GitHub repo ID."""
     mapping = {"PAY": "repo-1", "CART": "repo-2", "AUTH": "repo-3", "PROD": "repo-4", "ORD": "repo-5"}
     return mapping.get(project_id)
+
+
+# Cache the developer directory per process to avoid repeated lookups.
+_DEVELOPERS_CACHE: Optional[list[dict]] = None
+
+
+def _get_developers(jira_tools: list) -> list[dict]:
+    """Fetch the developer directory via the jira_list_developers tool output.
+
+    Parses the tool's formatted text back into structured records so the demo
+    router can resolve names without needing a separate HTTP client.
+    """
+    global _DEVELOPERS_CACHE
+    if _DEVELOPERS_CACHE is not None:
+        return _DEVELOPERS_CACHE
+
+    list_tool = next((t for t in jira_tools if t.name == "jira_list_developers"), None)
+    developers: list[dict] = []
+    if list_tool:
+        try:
+            raw = str(list_tool.invoke({}))
+        except Exception as e:
+            logger.warning(f"Failed to list developers: {e}")
+            raw = ""
+        # Lines look like: "- dev-3: Raj Patel (raj@ecommerce.io)"
+        for line in raw.splitlines():
+            line = line.strip().lstrip("-").strip()
+            if not line.startswith("dev-") or ":" not in line:
+                continue
+            dev_id, rest = line.split(":", 1)
+            rest = rest.strip()
+            name = rest
+            email = ""
+            if "(" in rest and rest.endswith(")"):
+                name = rest[: rest.index("(")].strip()
+                email = rest[rest.index("(") + 1 : -1].strip()
+            developers.append({"id": dev_id.strip(), "name": name, "email": email})
+
+    _DEVELOPERS_CACHE = developers
+    return developers
+
+
+def _detect_person(message: str, jira_tools: list, current_user=None) -> Optional[str]:
+    """Detect whether the message references a specific person and return a
+    resolvable assignee reference (developer name or 'me' -> current user).
+
+    Returns the matched name/first-name so the assignee tool can resolve it,
+    or None if the query is not person-scoped.
+    """
+    msg_lower = message.lower()
+
+    # Handle first-person phrasing ("my stories", "assigned to me")
+    if current_user is not None and any(
+        kw in msg_lower for kw in ["assigned to me", "my stories", "my work", "my tasks", "my assignments"]
+    ):
+        # Match the current user's name against the directory.
+        return getattr(current_user, "name", None)
+
+    developers = _get_developers(jira_tools)
+    if not developers:
+        return None
+
+    for dev in developers:
+        name = dev["name"]
+        first = name.split()[0]
+        # Match full name or a standalone first name token in the message.
+        if name.lower() in msg_lower:
+            return name
+        tokens = [t.strip("?.,!'\"") for t in msg_lower.split()]
+        if first.lower() in tokens:
+            return name
+    return None
+
+
+def _detect_status(msg: str) -> Optional[str]:
+    """Detect a story status filter from the message."""
+    if "in review" in msg or "in-review" in msg or "in_review" in msg:
+        return "in_review"
+    if "in progress" in msg or "in-progress" in msg or "in_progress" in msg:
+        return "in_progress"
+    if "done" in msg or "completed" in msg or "finished" in msg:
+        return "done"
+    if "todo" in msg or "to do" in msg or "backlog" in msg or "not started" in msg:
+        return "todo"
+    return None
+
+
+# Words that indicate intent/role rather than a searchable story topic.
+_STORY_NON_TOPIC_WORDS = {
+    "story", "stories", "assigned", "assign", "assignee", "work", "working",
+    "backlog", "task", "tasks", "jira", "ticket", "tickets", "show", "list",
+    "get", "find", "give", "tell", "what", "which", "the", "for", "all",
+    "todo", "done", "progress", "review", "status",
+}
+
+
+def _extract_story_keyword(message: str) -> Optional[str]:
+    """Extract a meaningful topic keyword for story search, or None.
+
+    Unlike the generic query extractor, this drops story/role/status words so
+    we don't accidentally pass a whole sentence as a literal keyword filter.
+    """
+    words = [w.strip("?.,!'\"").lower() for w in message.split()]
+    topic = [w for w in words if len(w) > 2 and w not in _STORY_NON_TOPIC_WORDS]
+    if not topic:
+        return None
+    return " ".join(topic[:4])
 
 
 def _detect_repo(msg: str) -> Optional[str]:

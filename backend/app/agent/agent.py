@@ -13,6 +13,7 @@ from app.agent.session import ChatMessage, ChatSession, get_or_create_session
 from app.agent.tools.confluence_tools import create_confluence_tools
 from app.agent.tools.github_tools import create_github_tools
 from app.agent.tools.jira_tools import create_jira_tools
+from app.agent.tools.servicenow_tools import create_servicenow_tools
 from app.core.config import settings
 from app.models.integration import Integration
 from app.models.user import User
@@ -35,6 +36,8 @@ def _build_tools(integrations: list[Integration]) -> list:
             tools.extend(create_confluence_tools(integration.url, integration.token))
         elif integration.type.value == "github":
             tools.extend(create_github_tools(integration.url, integration.token))
+        elif integration.type.value == "servicenow":
+            tools.extend(create_servicenow_tools(integration.url, integration.token))
     return tools
 
 
@@ -97,6 +100,19 @@ async def execute_proposed_action(proposal: dict, integrations: list[Integration
             else:
                 return f"❌ Failed to create story: {response.text}"
 
+        elif action == "update_story":
+            story_id = params["story_id"]
+            response = await client.put(
+                f"{integration.url}/stories/{story_id}",
+                headers=headers,
+                json=params.get("changes", {}),
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return f"✅ Story updated successfully: **{data['id']}** - {data['title']}"
+            else:
+                return f"❌ Failed to update story {story_id}: {response.text}"
+
         elif action == "create_branch":
             response = await client.post(
                 f"{integration.url}/repos/{params['repo_id']}/branches",
@@ -108,6 +124,18 @@ async def execute_proposed_action(proposal: dict, integrations: list[Integration
                 return f"✅ Branch created successfully: **{data['name']}**"
             else:
                 return f"❌ Failed to create branch: {response.text}"
+
+        elif action == "create_incident":
+            response = await client.post(
+                f"{integration.url}/incidents",
+                headers=headers,
+                json=params,
+            )
+            if response.status_code == 201:
+                data = response.json()
+                return f"✅ Incident opened successfully: **{data['id']}** - {data['title']} ({data['severity']})"
+            else:
+                return f"❌ Failed to open incident: {response.text}"
 
         else:
             return f"❌ Unknown action type: {action}"
@@ -144,31 +172,19 @@ async def chat(
         user_role=user.role.value.replace("_", " ").title(),
     )
 
-    # Initialize LLM
-    if "1min.ai" in settings.openai_base_url:
-        # Use custom 1min.ai adapter (doesn't support tool calling directly)
-        from app.agent.onemin_llm import OneMinAIChatModel
-        llm = OneMinAIChatModel(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url.rstrip("/v1").rstrip("/"),
-            model="gpt-4o",
-            temperature=0.1,
-        )
-        # 1min.ai doesn't support native function calling, so we use demo agent routing
-        # but with LLM for response synthesis
-        llm_with_tools = llm
+    # Initialize the orchestrator LLM. This is ALWAYS OpenAI: it needs native
+    # function calling to decide which tools to invoke from the user's intent.
+    llm = ChatOpenAI(
+        model=settings.orchestrator_model,
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url,
+        temperature=0.1,
+    )
+    # Bind tools if available
+    if tools:
+        llm_with_tools = llm.bind_tools(tools)
     else:
-        llm = ChatOpenAI(
-            model="gpt-4o",
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
-            temperature=0.1,
-        )
-        # Bind tools if available
-        if tools:
-            llm_with_tools = llm.bind_tools(tools)
-        else:
-            llm_with_tools = llm
+        llm_with_tools = llm
 
     # Build message history
     messages = [SystemMessage(content=system_prompt)]
@@ -206,6 +222,8 @@ async def chat(
                     systems_queried.add("confluence")
                 elif "github" in tool_name:
                     systems_queried.add("github")
+                elif "servicenow" in tool_name:
+                    systems_queried.add("servicenow")
 
                 # Find and execute the tool
                 tool_fn = next((t for t in tools if t.name == tool_name), None)
@@ -243,6 +261,20 @@ async def chat(
                 break
 
     final_response = response.content if hasattr(response, "content") else str(response)
+
+    # Synthesis pass: re-phrase the orchestrator's answer using the configured
+    # synthesis provider (1min.ai by default, or OpenAI). Skip it when there is
+    # a pending write proposal (structured text that must not be reworded) or
+    # when no systems were queried (nothing to summarize).
+    if final_response and not proposal and systems_queried:
+        from app.agent.synthesis import synthesize_response
+
+        final_response = synthesize_response(
+            user_message=message,
+            orchestrator_answer=final_response,
+            role=user.role.value,
+            system_prompt=system_prompt,
+        )
 
     # Store in session
     session.messages.append(ChatMessage(role="user", content=message))

@@ -44,10 +44,20 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup():
-        """Initialize database on startup."""
+        """Initialize database and validate configuration on startup."""
         logger.info("Starting MAHALO3 backend...")
         init_db()
         logger.info("Database initialized.")
+
+        # Validate LLM configuration (fails fast if the orchestrator can't run,
+        # normalizes the switchable synthesis provider otherwise).
+        settings.validate_llm_config()
+        logger.info(
+            "LLM config: orchestrator=openai(%s), synthesis=%s(%s)",
+            settings.orchestrator_model,
+            settings.synthesis_provider,
+            settings.synthesis_model,
+        )
 
     return app
 

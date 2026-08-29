@@ -88,3 +88,29 @@ async def proxy_github(
             params=query_params,
         )
     return response.json()
+
+
+@router.get("/servicenow/{path:path}")
+async def proxy_servicenow(
+    path: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Proxy GET requests to the user's configured ServiceNow integration."""
+    integration = (
+        db.query(Integration)
+        .filter(Integration.user_id == current_user.id, Integration.type == "servicenow")
+        .first()
+    )
+    if not integration:
+        raise HTTPException(status_code=404, detail="No ServiceNow integration configured")
+
+    query_params = dict(request.query_params)
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.get(
+            f"{integration.url}/{path}",
+            headers={"X-API-Token": integration.token},
+            params=query_params,
+        )
+    return response.json()

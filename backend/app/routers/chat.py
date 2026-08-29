@@ -61,44 +61,10 @@ async def send_message(
     session_id = request.session_id or str(uuid.uuid4())
 
     try:
-        # Use LLM agent if API key is configured, otherwise use demo agent
-        if settings.openai_api_key and "1min.ai" in settings.openai_base_url:
-            # 1min.ai: use demo agent for tool routing + LLM for response synthesis
-            from app.agent.demo_agent import demo_chat
-            from app.agent.onemin_llm import OneMinAIChatModel
-
-            raw_result = await demo_chat(
-                message=request.message,
-                user=current_user,
-                session_id=session_id,
-                db=db,
-            )
-
-            # If we got tool results, ask 1min.ai to synthesize a polished response
-            if raw_result["systems_queried"] and not raw_result.get("proposal"):
-                try:
-                    llm = OneMinAIChatModel(
-                        api_key=settings.openai_api_key,
-                        base_url=settings.openai_base_url.rstrip("/v1").rstrip("/"),
-                        model="gpt-4o",
-                        temperature=0.1,
-                    )
-                    from langchain_core.messages import HumanMessage as HM
-                    synthesis_prompt = (
-                        f"You are MAHALO3, an AI assistant for a {current_user.role.value.replace('_', ' ')}. "
-                        f"Based on the following data retrieved from project management systems, "
-                        f"provide a clear, well-formatted summary for the user who asked: \"{request.message}\"\n\n"
-                        f"Retrieved data:\n{raw_result['response']}"
-                    )
-                    llm_response = llm.invoke([HM(content=synthesis_prompt)])
-                    raw_result["response"] = llm_response.content
-                except Exception as e:
-                    # If LLM synthesis fails, keep the raw tool output (still useful)
-                    logger.warning(f"1min.ai synthesis failed, using raw output: {e}")
-
-            result = raw_result
-
-        elif settings.openai_api_key:
+        if settings.openai_api_key:
+            # Primary path: OpenAI orchestrator with native tool calling.
+            # Synthesis (final phrasing) is handled inside chat() via the
+            # configured SYNTHESIS_PROVIDER.
             result = await chat(
                 message=request.message,
                 user=current_user,
@@ -106,7 +72,10 @@ async def send_message(
                 db=db,
             )
         else:
+            # Last-resort fallback: keyword-based demo agent (no LLM configured).
+            logger.warning("OPENAI_API_KEY not set; using keyword demo agent fallback.")
             from app.agent.demo_agent import demo_chat
+
             result = await demo_chat(
                 message=request.message,
                 user=current_user,
@@ -121,6 +90,7 @@ async def send_message(
             session_id=result["session_id"],
         )
     except Exception as e:
+        logger.exception("Agent error")
         raise HTTPException(
             status_code=500,
             detail=f"Agent error: {str(e)}",

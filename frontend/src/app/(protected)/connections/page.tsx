@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/services/api";
+import ViewDataModal from "@/components/connections/ViewDataModal";
 
 interface Integration {
   id: number;
@@ -23,6 +24,7 @@ const INTEGRATION_TYPES = [
   { value: "jira", label: "Jira", icon: "📋", defaultPort: 5001 },
   { value: "confluence", label: "Confluence", icon: "📄", defaultPort: 5002 },
   { value: "github", label: "GitHub", icon: "🐙", defaultPort: 5003 },
+  { value: "servicenow", label: "ServiceNow", icon: "🛠️", defaultPort: 5004 },
 ];
 
 export default function ConnectionsPage() {
@@ -31,6 +33,7 @@ export default function ConnectionsPage() {
   const [testResults, setTestResults] = useState<Record<number, TestResult>>({});
   const [testingId, setTestingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [viewData, setViewData] = useState<Integration | null>(null);
 
   // Form state
   const [formType, setFormType] = useState("jira");
@@ -121,7 +124,7 @@ export default function ConnectionsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Connections</h1>
           <p className="text-gray-600 mt-1">
-            Manage your integrations with Jira, Confluence, and GitHub.
+            Manage your integrations with Jira, Confluence, GitHub, and ServiceNow.
           </p>
         </div>
         <button
@@ -310,6 +313,12 @@ export default function ConnectionsPage() {
                     {testingId === integration.id ? "Testing..." : "Test"}
                   </button>
                   <button
+                    onClick={() => setViewData(integration)}
+                    className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-xs font-medium"
+                  >
+                    View data
+                  </button>
+                  <button
                     onClick={() => handleDelete(integration.id)}
                     className="px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors text-xs font-medium"
                   >
@@ -320,6 +329,14 @@ export default function ConnectionsPage() {
             );
           })}
         </div>
+      )}
+
+      {viewData && (
+        <ViewDataModal
+          type={viewData.type}
+          name={viewData.name}
+          onClose={() => setViewData(null)}
+        />
       )}
     </div>
   );

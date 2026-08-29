@@ -168,6 +168,45 @@ We use Alembic for schema migrations with the following rules:
 Example: `20260725_add_currency_column_to_payments.py`
 """,
     },
+    {
+        "id": "ENG-005",
+        "space_id": "ENG",
+        "title": "SAML 2.0 SSO - Technical Design",
+        "author": "Lava Dev",
+        "last_updated": "2026-08-18",
+        "content": """# SAML 2.0 SSO - Technical Design
+
+## Overview
+Enterprise customers require single sign-on through their own identity providers (Okta, Azure AD). This document describes the SAML 2.0 integration for the auth service. Linked to AUTH-306.
+
+## Goals
+- Support both IdP-initiated and SP-initiated login flows
+- Just-in-time (JIT) user provisioning on first login
+- Per-organization IdP configuration
+- No passwords stored for SSO users
+
+## Flow
+```
+User -> App -> Auth Service (SP) -> Customer IdP -> SAML Assertion -> Auth Service -> Session
+```
+
+## Components
+1. **SP Metadata Endpoint** - Exposes our service provider metadata for IdP configuration
+2. **Assertion Consumer Service (ACS)** - Receives and validates SAML assertions
+3. **JIT Provisioning** - Creates a user record on first successful login, mapping SAML attributes to profile fields
+4. **Admin Configuration UI** - Lets an org admin register their IdP metadata
+
+## Security Considerations
+- Validate assertion signature against the IdP's published certificate
+- Enforce assertion `NotBefore` / `NotOnOrAfter` conditions
+- Reject unsolicited responses without a matching request ID (SP-initiated)
+- Bind sessions to the authenticated `NameID`
+
+## Open Questions
+- Encrypted assertions: required for phase 1 or phase 2?
+- Group-to-role mapping: how granular for the first release?
+""",
+    },
     # === Security & Compliance Space ===
     {
         "id": "SEC-001",

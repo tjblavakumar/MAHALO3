@@ -6,6 +6,7 @@ DEVELOPERS = [
     {"id": "dev-3", "name": "Raj Patel", "email": "raj@ecommerce.io"},
     {"id": "dev-4", "name": "Emily Zhang", "email": "emily@ecommerce.io"},
     {"id": "dev-5", "name": "David Kim", "email": "david@ecommerce.io"},
+    {"id": "dev-6", "name": "Lava Dev", "email": "lava@ecommerce.io"},
 ]
 
 PROJECTS = [
@@ -320,7 +321,7 @@ STORIES = [
         "status": "todo",
         "priority": "low",
         "story_points": 13,
-        "assignee": None,
+        "assignee": "dev-6",
         "acceptance_criteria": [
             "Supports BTC and ETH",
             "QR code payment flow",
@@ -338,7 +339,7 @@ STORIES = [
         "status": "todo",
         "priority": "high",
         "story_points": 21,
-        "assignee": None,
+        "assignee": "dev-6",
         "acceptance_criteria": [
             "Score all transactions over $500",
             "Block transactions with score > 0.9",
@@ -554,6 +555,26 @@ STORIES = [
             "Revoke all other sessions button",
         ],
         "comments": [],
+    },
+    {
+        "id": "AUTH-306",
+        "project_id": "AUTH",
+        "sprint_id": "AUTH-S2",
+        "title": "Single Sign-On (SSO) with SAML for enterprise customers",
+        "description": "Add SAML 2.0 based SSO so enterprise customers can authenticate via their own identity providers (Okta, Azure AD).",
+        "status": "in_progress",
+        "priority": "high",
+        "story_points": 8,
+        "assignee": "dev-6",
+        "acceptance_criteria": [
+            "SAML 2.0 service provider metadata endpoint",
+            "IdP-initiated and SP-initiated login flows",
+            "Just-in-time user provisioning on first login",
+            "Admin UI to configure IdP per organization",
+        ],
+        "comments": [
+            {"author": "dev-6", "text": "Metadata endpoint done, wiring up assertion validation next", "date": "2026-08-20"},
+        ],
     },
     # === Product Catalog Stories ===
     # Sprint 15 (completed)

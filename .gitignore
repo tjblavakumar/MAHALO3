@@ -28,6 +28,10 @@ backend/mahalo3.db
 backend/.env
 frontend/.env.local
 
+# Mock service persistent stores (runtime state, seeded from seed_data.py)
+mock-services/*/data.json
+mock-services/*/data.json.tmp
+
 # Node / Next.js
 node_modules/
 .next/

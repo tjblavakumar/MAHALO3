@@ -28,23 +28,31 @@ echo $! > "$PIDS_DIR/confluence.pid"
 deactivate
 
 # --- Mock GitHub ---
-echo "  [3/5] Starting Mock GitHub on :5003..."
+echo "  [3/6] Starting Mock GitHub on :5003..."
 cd "$PROJECT_DIR/mock-services/github"
 source venv/bin/activate
 uvicorn main:app --host 0.0.0.0 --port 5003 > /dev/null 2>&1 &
 echo $! > "$PIDS_DIR/github.pid"
 deactivate
 
+# --- Mock ServiceNow ---
+echo "  [4/6] Starting Mock ServiceNow on :5004..."
+cd "$PROJECT_DIR/mock-services/servicenow"
+source venv/bin/activate
+uvicorn main:app --host 0.0.0.0 --port 5004 > /dev/null 2>&1 &
+echo $! > "$PIDS_DIR/servicenow.pid"
+deactivate
+
 # --- Backend ---
-echo "  [4/5] Starting Backend on :8000..."
+echo "  [5/6] Starting Backend on :8008..."
 cd "$PROJECT_DIR/backend"
 source venv/bin/activate
-uvicorn app.main:app --host 0.0.0.0 --port 8000 > /dev/null 2>&1 &
+uvicorn app.main:app --host 0.0.0.0 --port 8008 > /dev/null 2>&1 &
 echo $! > "$PIDS_DIR/backend.pid"
 deactivate
 
 # --- Frontend ---
-echo "  [5/5] Starting Frontend on :3000..."
+echo "  [6/6] Starting Frontend on :3000..."
 cd "$PROJECT_DIR/frontend"
 npm run dev -- -p 3000 > /dev/null 2>&1 &
 echo $! > "$PIDS_DIR/frontend.pid"
@@ -58,7 +66,8 @@ echo ""
 echo "  📋 Mock Jira:       http://localhost:5001"
 echo "  📄 Mock Confluence:  http://localhost:5002"
 echo "  🐙 Mock GitHub:     http://localhost:5003"
-echo "  ⚙️  Backend:         http://localhost:8000"
+echo "  🛠️  Mock ServiceNow: http://localhost:5004"
+echo "  Backend:         http://localhost:8008"
 echo "  🌐 Frontend:        http://localhost:3000"
 echo ""
 echo "  To stop all: ./stop_all.sh"

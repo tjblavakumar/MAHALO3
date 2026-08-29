@@ -6,7 +6,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8008:8008"
     environment:
       - DATABASE_URL=sqlite:///./mahalo3.db
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-key-change-me}
@@ -17,10 +17,11 @@ services:
       - MOCK_JIRA_URL=http://mock-jira:5001
       - MOCK_CONFLUENCE_URL=http://mock-confluence:5002
       - MOCK_GITHUB_URL=http://mock-github:5003
+      - MOCK_SERVICENOW_URL=http://mock-servicenow:5004
     volumes:
       - backend-data:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -33,7 +34,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:8008
     depends_on:
       - backend
 
@@ -75,6 +76,20 @@ services:
       - MOCK_GITHUB_TOKEN=${MOCK_GITHUB_TOKEN:-mock-github-token-12345}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  mock-servicenow:
+    build:
+      context: ./mock-services/servicenow
+      dockerfile: Dockerfile
+    ports:
+      - "5004:5004"
+    environment:
+      - MOCK_SERVICENOW_TOKEN=${MOCK_SERVICENOW_TOKEN:-mock-servicenow-token-12345}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
       interval: 10s
       timeout: 5s
       retries: 3

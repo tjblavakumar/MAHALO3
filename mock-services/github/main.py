@@ -6,7 +6,8 @@ from typing import Optional
 from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel
 
-from seed_data import BRANCHES, COMMITS, CONTRIBUTOR_STATS, PULL_REQUESTS, REPOS
+import store
+from store import BRANCHES, COMMITS, CONTRIBUTOR_STATS, PULL_REQUESTS, REPOS
 
 app = FastAPI(title="Mock GitHub Service", version="1.0.0")
 
@@ -79,10 +80,30 @@ def create_branch(
         "last_commit": "2026-08-25",
     }
     BRANCHES[repo_id].append(new_branch)
+    store.save()
     return new_branch
 
 
 # --- Pull Requests ---
+
+@app.get("/pulls")
+def list_all_pulls(
+    status: Optional[str] = Query(None),
+    author_id: Optional[str] = Query(None),
+    repo_id: Optional[str] = Query(None),
+    x_api_token: Optional[str] = Header(None),
+):
+    """Flat list of all pull requests across repositories (optionally filtered)."""
+    verify_token(x_api_token)
+    prs = list(PULL_REQUESTS)
+    if repo_id:
+        prs = [pr for pr in prs if pr["repo_id"] == repo_id]
+    if status:
+        prs = [pr for pr in prs if pr["status"] == status]
+    if author_id:
+        prs = [pr for pr in prs if pr["author_id"] == author_id]
+    return {"pull_requests": prs, "total": len(prs)}
+
 
 @app.get("/repos/{repo_id}/pulls")
 def list_pulls(
@@ -163,7 +184,6 @@ def create_commit(
         raise HTTPException(status_code=404, detail="Branch not found")
 
     # Find author name
-    from seed_data import CONTRIBUTOR_STATS
     author_name = request.author_id
     for repo_stats in CONTRIBUTOR_STATS.values():
         for stat in repo_stats:
@@ -183,6 +203,7 @@ def create_commit(
         "deletions": request.deletions,
     }
     COMMITS.append(new_commit)
+    store.save()
     return new_commit
 
 

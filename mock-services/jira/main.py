@@ -6,7 +6,8 @@ from typing import Optional
 from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel
 
-from seed_data import DEVELOPERS, PROJECTS, SPRINTS, STORIES
+import store
+from store import DEVELOPERS, PROJECTS, SPRINTS, STORIES
 
 app = FastAPI(title="Mock Jira Service", version="1.0.0")
 
@@ -64,6 +65,25 @@ def get_board(project_id: str, x_api_token: Optional[str] = Header(None)):
         "done": [s for s in sprint_stories if s["status"] == "done"],
     }
     return {"sprint": active_sprint, "columns": columns}
+
+
+@app.get("/stories")
+def list_all_stories(
+    status: Optional[str] = Query(None),
+    assignee: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None),
+    x_api_token: Optional[str] = Header(None),
+):
+    """Flat list of all stories across projects (optionally filtered)."""
+    verify_token(x_api_token)
+    stories = list(STORIES)
+    if project_id:
+        stories = [s for s in stories if s["project_id"] == project_id]
+    if status:
+        stories = [s for s in stories if s["status"] == status]
+    if assignee:
+        stories = [s for s in stories if s["assignee"] == assignee]
+    return {"stories": stories, "total": len(stories)}
 
 
 @app.get("/projects/{project_id}/stories")
@@ -149,6 +169,7 @@ def create_story(request: CreateStoryRequest, x_api_token: Optional[str] = Heade
         "comments": [],
     }
     STORIES.append(new_story)
+    store.save()
     return new_story
 
 
@@ -182,6 +203,7 @@ def update_story(
     if request.story_points is not None:
         story["story_points"] = request.story_points
 
+    store.save()
     return story
 
 

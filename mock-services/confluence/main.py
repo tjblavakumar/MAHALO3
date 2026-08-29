@@ -5,7 +5,8 @@ from typing import Optional
 
 from fastapi import FastAPI, Header, HTTPException, Query
 
-from seed_data import PAGES, SPACES
+import store
+from store import PAGES, SPACES
 
 app = FastAPI(title="Mock Confluence Service", version="1.0.0")
 
@@ -40,6 +41,27 @@ def get_space(space_id: str, x_api_token: Optional[str] = Header(None)):
     if not space:
         raise HTTPException(status_code=404, detail="Space not found")
     return space
+
+
+@app.get("/pages")
+def list_all_pages(
+    space_id: Optional[str] = Query(None),
+    x_api_token: Optional[str] = Header(None),
+):
+    """Flat list of all pages across spaces (without full content), optionally by space."""
+    verify_token(x_api_token)
+    pages = [
+        {
+            "id": p["id"],
+            "title": p["title"],
+            "author": p["author"],
+            "last_updated": p["last_updated"],
+            "space_id": p["space_id"],
+        }
+        for p in PAGES
+        if not space_id or p["space_id"] == space_id
+    ]
+    return {"pages": pages, "total": len(pages)}
 
 
 @app.get("/spaces/{space_id}/pages")
