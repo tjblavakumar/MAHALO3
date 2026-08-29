@@ -13,6 +13,7 @@ from typing import Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
+from app.agent.markup_utils import clean_tool_markup
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -50,26 +51,38 @@ def synthesize_response(
     Returns the synthesized text, or the original orchestrator answer if
     synthesis fails for any reason (so the demo never dead-ends).
     """
+    cleaned_input = clean_tool_markup(orchestrator_answer)
+    if not cleaned_input:
+        return orchestrator_answer
+
     try:
         llm = _build_synthesis_llm()
         instruction = (
             f"You are MAHALO3, an AI assistant for a {role.replace('_', ' ')}. "
-            f"Rewrite the following answer so it is clear, well-formatted, and "
-            f"tailored to the user's question. Preserve all facts, IDs, numbers, "
-            f"and links exactly; do not invent new data.\n\n"
+            f"Your role is purely to synthesize and rephrase the provided answer into a clean, "
+            f"well-formatted summary tailored to the user's question.\n"
+            f"IMPORTANT: Do NOT call any tools, do not output any tool calling markup (such as <｜｜DSML... or <tool_call>), "
+            f"and do not search for new data. Use only the provided information.\n"
+            f"Preserve all facts, project keys, IDs, numbers, and links exactly; do not invent new data.\n\n"
             f"User question: {user_message}\n\n"
-            f"Answer to refine:\n{orchestrator_answer}"
+            f"Answer to refine:\n{cleaned_input}"
         )
         messages = []
         if system_prompt:
-            messages.append(SystemMessage(content=system_prompt))
+            clean_sys_prompt = (
+                f"{system_prompt}\n\n"
+                "Note: You are formatting the final answer. Do NOT invoke tools or output tool call tags."
+            )
+            messages.append(SystemMessage(content=clean_sys_prompt))
         messages.append(HumanMessage(content=instruction))
 
         result = llm.invoke(messages)
         content = getattr(result, "content", None)
         if content and content.strip():
-            return content
+            cleaned_output = clean_tool_markup(content)
+            if cleaned_output:
+                return cleaned_output
         logger.warning("Synthesis returned empty content; using orchestrator answer.")
     except Exception as e:  # noqa: BLE001 - never fail the request on synthesis
         logger.warning("Synthesis failed (%s); using orchestrator answer.", e)
-    return orchestrator_answer
+    return cleaned_input

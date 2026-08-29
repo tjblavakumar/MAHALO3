@@ -15,6 +15,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 from app.core.database import get_db
 from app.models.integration import Integration
+from app.models.project import Project
 from app.models.user import User
 from app.routers.auth import get_current_user
 
@@ -26,6 +27,7 @@ class ChatRequest(BaseModel):
 
     message: str
     session_id: Optional[str] = None
+    project_id: Optional[int] = None
 
 
 class ChatResponse(BaseModel):
@@ -60,19 +62,30 @@ async def send_message(
     """Send a message to the AI agent and get a response."""
     session_id = request.session_id or str(uuid.uuid4())
 
+    active_project = None
+    if request.project_id is not None:
+        active_project = (
+            db.query(Project)
+            .filter(Project.id == request.project_id, Project.user_id == current_user.id)
+            .first()
+        )
+    if active_project is None:
+        active_project = (
+            db.query(Project)
+            .filter(Project.user_id == current_user.id, Project.is_active.is_(True))
+            .first()
+        )
+
     try:
         if settings.openai_api_key:
-            # Primary path: OpenAI orchestrator with native tool calling.
-            # Synthesis (final phrasing) is handled inside chat() via the
-            # configured SYNTHESIS_PROVIDER.
             result = await chat(
                 message=request.message,
                 user=current_user,
                 session_id=session_id,
                 db=db,
+                project=active_project,
             )
         else:
-            # Last-resort fallback: keyword-based demo agent (no LLM configured).
             logger.warning("OPENAI_API_KEY not set; using keyword demo agent fallback.")
             from app.agent.demo_agent import demo_chat
 
@@ -81,6 +94,7 @@ async def send_message(
                 user=current_user,
                 session_id=session_id,
                 db=db,
+                project=active_project,
             )
 
         return ChatResponse(

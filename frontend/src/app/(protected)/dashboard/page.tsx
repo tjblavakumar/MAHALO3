@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { useProjects } from "@/contexts/ProjectContext";
 import SprintBoardWidget from "@/components/dashboard/widgets/SprintBoardWidget";
 import VelocityWidget from "@/components/dashboard/widgets/VelocityWidget";
 import ProjectStatusWidget from "@/components/dashboard/widgets/ProjectStatusWidget";
@@ -9,6 +10,8 @@ import KeyMetricsWidget from "@/components/dashboard/widgets/KeyMetricsWidget";
 import MyStoriesWidget from "@/components/dashboard/widgets/MyStoriesWidget";
 import MyPRsWidget from "@/components/dashboard/widgets/MyPRsWidget";
 import RecentCommitsWidget from "@/components/dashboard/widgets/RecentCommitsWidget";
+
+import type { Project } from "@/types";
 
 const ROLE_LABELS: Record<string, string> = {
   product_manager: "Product Manager",
@@ -27,48 +30,48 @@ function WidgetCard({ title, children, span = 1 }: { title: string; children: Re
   );
 }
 
-function ProductManagerDashboard() {
+function ProductManagerDashboard({ selectedProjects }: { selectedProjects: Project[] }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-      <WidgetCard title="Sprint Board - Payment Gateway" span={2}>
-        <SprintBoardWidget projectId="PAY" />
+      <WidgetCard title="Sprint Board" span={2}>
+        <SprintBoardWidget selectedProjects={selectedProjects} />
       </WidgetCard>
       <WidgetCard title="Sprint Velocity">
-        <VelocityWidget projectId="PAY" />
+        <VelocityWidget selectedProjects={selectedProjects} />
       </WidgetCard>
       <WidgetCard title="Project Status" span={2}>
-        <ProjectStatusWidget />
+        <ProjectStatusWidget selectedProjects={selectedProjects} />
       </WidgetCard>
       <WidgetCard title="Key Metrics">
-        <KeyMetricsWidget />
+        <KeyMetricsWidget selectedProjects={selectedProjects} />
       </WidgetCard>
     </div>
   );
 }
 
-function ExecutiveDashboard() {
+function ExecutiveDashboard({ selectedProjects }: { selectedProjects: Project[] }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
       <WidgetCard title="Portfolio Health">
-        <PortfolioWidget />
+        <PortfolioWidget selectedProjects={selectedProjects} />
       </WidgetCard>
       <WidgetCard title="Key Metrics">
-        <KeyMetricsWidget />
+        <KeyMetricsWidget selectedProjects={selectedProjects} />
       </WidgetCard>
-      <WidgetCard title="Sprint Velocity - Payment">
-        <VelocityWidget projectId="PAY" />
+      <WidgetCard title="Sprint Velocity">
+        <VelocityWidget selectedProjects={selectedProjects} />
       </WidgetCard>
       <WidgetCard title="Project Completion" span={2}>
-        <ProjectStatusWidget />
+        <ProjectStatusWidget selectedProjects={selectedProjects} />
       </WidgetCard>
-      <WidgetCard title="Sprint Board Overview">
-        <SprintBoardWidget projectId="PAY" />
+      <WidgetCard title="Sprint Board Overview" span={2}>
+        <SprintBoardWidget selectedProjects={selectedProjects} />
       </WidgetCard>
     </div>
   );
 }
 
-function DeveloperDashboard() {
+function DeveloperDashboard({ selectedProjects }: { selectedProjects: Project[] }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
       <WidgetCard title="My Stories">
@@ -81,10 +84,10 @@ function DeveloperDashboard() {
         <RecentCommitsWidget developerId="dev-1" />
       </WidgetCard>
       <WidgetCard title="Sprint Board" span={2}>
-        <SprintBoardWidget projectId="PAY" />
+        <SprintBoardWidget selectedProjects={selectedProjects} />
       </WidgetCard>
       <WidgetCard title="Sprint Velocity">
-        <VelocityWidget projectId="PAY" />
+        <VelocityWidget selectedProjects={selectedProjects} />
       </WidgetCard>
     </div>
   );
@@ -92,23 +95,38 @@ function DeveloperDashboard() {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { selectedProjects, loading: projectsLoading } = useProjects();
 
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-1">
-          Welcome back, {user?.name}!{" "}
-          <span className="text-blue-600 font-medium">
-            {user ? ROLE_LABELS[user.role] || user.role : ""}
-          </span>{" "}
-          view
-        </p>
+      <div className="mb-8 flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600 mt-1">
+            Welcome back, {user?.name}!{" "}
+            <span className="text-blue-600 font-medium">
+              {user ? ROLE_LABELS[user.role] || user.role : ""}
+            </span>{" "}
+            view
+          </p>
+        </div>
+
+        {!projectsLoading && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            {selectedProjects.length === 0 ? (
+              <span className="text-gray-500">No projects selected (showing all)</span>
+            ) : selectedProjects.length === 1 ? (
+              <span>Project: <strong className="font-semibold">{selectedProjects[0].name}</strong></span>
+            ) : (
+              <span>Aggregating <strong className="font-semibold">{selectedProjects.length}</strong> selected projects</span>
+            )}
+          </div>
+        )}
       </div>
 
-      {user?.role === "product_manager" && <ProductManagerDashboard />}
-      {user?.role === "executive" && <ExecutiveDashboard />}
-      {user?.role === "developer" && <DeveloperDashboard />}
+      {user?.role === "product_manager" && <ProductManagerDashboard selectedProjects={selectedProjects} />}
+      {user?.role === "executive" && <ExecutiveDashboard selectedProjects={selectedProjects} />}
+      {user?.role === "developer" && <DeveloperDashboard selectedProjects={selectedProjects} />}
 
       {!user?.role && (
         <div className="bg-white rounded-lg shadow p-12 text-center">

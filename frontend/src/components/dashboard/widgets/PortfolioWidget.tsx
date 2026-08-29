@@ -17,24 +17,32 @@ interface ProjectHealth {
   openPRs: number;
 }
 
-export default function PortfolioWidget() {
+export default function PortfolioWidget({ selectedProjects = [] }: { selectedProjects?: Array<{ jira_project_key: string | null; name: string }> }) {
   const [projects, setProjects] = useState<ProjectHealth[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedProjects]);
 
   async function loadData() {
     setLoading(true);
     const projResult = await api.get<{ projects: Project[] }>("/proxy/jira/projects");
     if (projResult.data) {
+      const selectedJiraKeys = selectedProjects
+        .map((project) => project.jira_project_key)
+        .filter((value): value is string => Boolean(value));
+
+      const filteredProjects = selectedJiraKeys.length > 0
+        ? projResult.data.projects.filter((proj) => selectedJiraKeys.includes(proj.id))
+        : projResult.data.projects;
+
       const healthData: ProjectHealth[] = [];
       const repoMap: Record<string, string> = {
         PAY: "repo-1", CART: "repo-2", AUTH: "repo-3", PROD: "repo-4", ORD: "repo-5",
       };
 
-      for (const proj of projResult.data.projects) {
+      for (const proj of filteredProjects) {
         const stories = await api.get<{ stories: Array<{ status: string; priority: string }> }>(
           `/proxy/jira/projects/${proj.id}/stories`
         );

@@ -243,7 +243,7 @@ def create_jira_tools(jira_url: str, jira_token: str):
     @tool
     def jira_create_story(project_id: str, title: str, description: str, priority: str = "medium", story_points: int = 0, assignee: Optional[str] = None) -> str:
         """[WRITE ACTION - REQUIRES APPROVAL] Create a new story in Jira. Returns a proposal for user confirmation.
-        project_id: PAY, CART, AUTH, PROD, or ORD.
+        project_id: Jira project key (e.g. PAY, CART, AUTH, PROD, ORD, or any custom project key like GOLDSELL or EXP).
         priority: critical, high, medium, or low.
         assignee: developer ID (dev-1 through dev-5) or None."""
         # This is a write action - return proposal instead of executing

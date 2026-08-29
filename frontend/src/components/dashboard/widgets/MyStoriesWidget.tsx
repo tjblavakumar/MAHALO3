@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useProjects } from "@/contexts/ProjectContext";
 import { api } from "@/services/api";
 
 interface Story {
@@ -13,19 +14,27 @@ interface Story {
 }
 
 export default function MyStoriesWidget({ developerId = "dev-1" }: { developerId?: string }) {
+  const { projects: userProjects, activeProject } = useProjects();
   const [stories, setStories] = useState<Story[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const projectIds = useMemo(() => {
+    const list = userProjects
+      .map((project) => project.jira_project_key)
+      .filter((value): value is string => Boolean(value));
+    if (list.length > 0) return list;
+    if (activeProject?.jira_project_key) return [activeProject.jira_project_key];
+    return [];
+  }, [userProjects, activeProject]);
+
   useEffect(() => {
     loadData();
-  }, [developerId]);
+  }, [developerId, projectIds]);
 
   async function loadData() {
     setLoading(true);
-    // Search across all projects for assigned stories
-    const projects = ["PAY", "CART", "AUTH", "PROD", "ORD"];
     const allStories: Story[] = [];
-    for (const proj of projects) {
+    for (const proj of projectIds) {
       const result = await api.get<{ stories: Story[] }>(
         `/proxy/jira/projects/${proj}/stories?assignee=${developerId}`
       );

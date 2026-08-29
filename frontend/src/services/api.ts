@@ -9,6 +9,35 @@ interface ApiResponse<T> {
   error: string | null;
 }
 
+function normalizeErrorMessage(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeErrorMessage(item))
+      .filter(Boolean)
+      .join("; ");
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const candidate = record.msg ?? record.message ?? record.detail;
+    if (candidate) {
+      return normalizeErrorMessage(candidate);
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "Request failed";
+    }
+  }
+
+  return "Request failed";
+}
+
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -35,9 +64,14 @@ async function request<T>(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      const errorMessage =
+        normalizeErrorMessage(errorData.detail) ||
+        normalizeErrorMessage(errorData.message) ||
+        `Request failed with status ${response.status}`;
+
       return {
         data: null,
-        error: errorData.detail || `Request failed with status ${response.status}`,
+        error: errorMessage,
       };
     }
 

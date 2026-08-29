@@ -2,17 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/services/api";
+import { useProjects } from "@/contexts/ProjectContext";
 import ViewDataModal from "@/components/connections/ViewDataModal";
-
-interface Integration {
-  id: number;
-  user_id: number;
-  type: string;
-  name: string;
-  url: string;
-  project_scope: string | null;
-  created_at: string;
-}
+import type { Integration, Project, ProjectProposal } from "@/types";
 
 interface TestResult {
   success: boolean;
@@ -27,15 +19,27 @@ const INTEGRATION_TYPES = [
   { value: "servicenow", label: "ServiceNow", icon: "🛠️", defaultPort: 5004 },
 ];
 
+const PROJECT_TYPES = [
+  { value: "development", label: "Development" },
+  { value: "maintenance", label: "Maintenance" },
+  { value: "experiment", label: "Experiment" },
+  { value: "research", label: "Research" },
+  { value: "other", label: "Other" },
+];
+
 export default function ConnectionsPage() {
+  const { projects, selectedProjects, toggleProjectSelection, refreshProjects } = useProjects();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showProjectForm, setShowProjectForm] = useState(false);
   const [testResults, setTestResults] = useState<Record<number, TestResult>>({});
   const [testingId, setTestingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewData, setViewData] = useState<Integration | null>(null);
+  const [projectProposal, setProjectProposal] = useState<ProjectProposal | null>(null);
+  const [projectFormError, setProjectFormError] = useState<string | null>(null);
+  const [projectSubmitting, setProjectSubmitting] = useState(false);
 
-  // Form state
   const [formType, setFormType] = useState("jira");
   const [formName, setFormName] = useState("");
   const [formUrl, setFormUrl] = useState("");
@@ -44,8 +48,15 @@ export default function ConnectionsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const [projectName, setProjectName] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
+  const [projectGoal, setProjectGoal] = useState("");
+  const [projectType, setProjectType] = useState("development");
+  const [generateMockData, setGenerateMockData] = useState(true);
+
   useEffect(() => {
     loadIntegrations();
+    loadProjects();
   }, []);
 
   async function loadIntegrations() {
@@ -55,6 +66,10 @@ export default function ConnectionsPage() {
       setIntegrations(result.data);
     }
     setLoading(false);
+  }
+
+  async function loadProjects() {
+    await refreshProjects();
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -99,6 +114,61 @@ export default function ConnectionsPage() {
     });
   }
 
+  async function handleDeleteProject(projectId: number) {
+    if (!confirm("Are you sure you want to delete this project?")) return;
+    await api.delete(`/projects/${projectId}`);
+    await refreshProjects();
+  }
+
+  async function handleProjectProposal() {
+    setProjectFormError(null);
+    const result = await api.post<ProjectProposal>("/projects/proposal", {
+      name: projectName,
+      description: projectDescription,
+      goal: projectGoal,
+      project_type: projectType,
+    });
+
+    if (result.error) {
+      setProjectFormError(result.error);
+      return;
+    }
+
+    setProjectProposal(result.data);
+  }
+
+  async function handleCreateProject() {
+    if (!projectProposal) return;
+    setProjectSubmitting(true);
+    setProjectFormError(null);
+
+    const result = await api.post<Project>("/projects", {
+      name: projectName,
+      description: projectDescription,
+      goal: projectGoal,
+      project_type: projectType,
+      jira_project_key: projectProposal.jira_project_key,
+      confluence_space_key: projectProposal.confluence_space_key,
+      github_repo_name: projectProposal.github_repo_name,
+      servicenow_service_name: projectProposal.servicenow_service_name,
+      generate_mock_data: generateMockData,
+    });
+
+    if (result.error) {
+      setProjectFormError(result.error);
+    } else {
+      setShowProjectForm(false);
+      setProjectProposal(null);
+      setProjectName("");
+      setProjectDescription("");
+      setProjectGoal("");
+      setProjectType("development");
+      setGenerateMockData(true);
+      await loadProjects();
+    }
+    setProjectSubmitting(false);
+  }
+
   function resetForm() {
     setFormType("jira");
     setFormName("");
@@ -127,100 +197,96 @@ export default function ConnectionsPage() {
             Manage your integrations with Jira, Confluence, GitHub, and ServiceNow.
           </p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-        >
-          + Add Connection
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowProjectForm(true)}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+          >
+            + Create New Project
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+          >
+            + Add Connection
+          </button>
+        </div>
       </div>
 
-      {/* Add Connection Form */}
       {showForm && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">
-            New Connection
+            Add Connection
           </h2>
-          <form onSubmit={handleCreate} className="space-y-4">
-            {formError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {formError}
-              </div>
-            )}
 
-            <div className="grid grid-cols-3 gap-3">
-              {INTEGRATION_TYPES.map((type) => (
-                <button
-                  key={type.value}
-                  type="button"
-                  onClick={() => prefillDefaults(type.value)}
-                  className={`p-3 border rounded-lg text-center transition-colors ${
-                    formType === type.value
-                      ? "border-blue-500 bg-blue-50 text-blue-700"
-                      : "border-gray-200 hover:border-gray-300 text-gray-700"
-                  }`}
-                >
-                  <span className="text-2xl block mb-1">{type.icon}</span>
-                  <span className="text-sm font-medium">{type.label}</span>
-                </button>
-              ))}
+          {formError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm mb-4">
+              {formError}
             </div>
+          )}
 
-            <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Service type</label>
+                <select
+                  value={formType}
+                  onChange={(e) => {
+                    const nextType = e.target.value;
+                    setFormType(nextType);
+                    prefillDefaults(nextType);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors text-gray-900 bg-white"
+                >
+                  {INTEGRATION_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Connection name</label>
                 <input
                   type="text"
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors text-gray-900"
                   placeholder="My Jira"
                 />
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  URL
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Base URL</label>
                 <input
-                  type="text"
+                  type="url"
                   value={formUrl}
                   onChange={(e) => setFormUrl(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors text-gray-900"
                   placeholder="http://localhost:5001"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Token</label>
+                <input
+                  type="text"
+                  value={formToken}
+                  onChange={(e) => setFormToken(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors text-gray-900"
+                  placeholder="mock-jira-token-12345"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  API Token
-                </label>
-                <input
-                  type="password"
-                  value={formToken}
-                  onChange={(e) => setFormToken(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 text-sm"
-                  placeholder="Your API token"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Project Scope (optional)
-                </label>
-                <input
-                  type="text"
-                  value={formScope}
-                  onChange={(e) => setFormScope(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 text-sm"
-                  placeholder="e.g., PAY or payment-service"
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Project scope (optional)</label>
+              <input
+                type="text"
+                value={formScope}
+                onChange={(e) => setFormScope(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors text-gray-900"
+                placeholder="project or team scope"
+              />
             </div>
 
             <div className="flex gap-3 pt-2">
@@ -229,7 +295,7 @@ export default function ConnectionsPage() {
                 disabled={submitting}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50"
               >
-                {submitting ? "Saving..." : "Save Connection"}
+                {submitting ? "Adding..." : "Save Connection"}
               </button>
               <button
                 type="button"
@@ -246,7 +312,229 @@ export default function ConnectionsPage() {
         </div>
       )}
 
-      {/* Integrations List */}
+      {showProjectForm && (
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">
+            Create New Project
+          </h2>
+
+          {projectFormError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm mb-4">
+              {projectFormError}
+            </div>
+          )}
+
+          {!projectProposal ? (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Project name</label>
+                <input
+                  type="text"
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg ..."
+                  placeholder="Customer Portal"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Project description</label>
+                <textarea
+                  value={projectDescription}
+                  onChange={(e) => setProjectDescription(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg ..."
+                  rows={3}
+                  placeholder="Brief project description"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Goal of the project</label>
+                <textarea
+                  value={projectGoal}
+                  onChange={(e) => setProjectGoal(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg ..."
+                  rows={3}
+                  placeholder="What problem does this project solve?"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Project type</label>
+                <select
+                  value={projectType}
+                  onChange={(e) => setProjectType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg ..."
+                >
+                  {PROJECT_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  id="generateMockData"
+                  type="checkbox"
+                  checked={generateMockData}
+                  onChange={(e) => setGenerateMockData(e.target.checked)}
+                />
+                <label htmlFor="generateMockData" className="text-sm text-gray-700">
+                  Generate mock data for this project
+                </label>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleProjectProposal}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+                >
+                  Propose Project IDs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProjectForm(false);
+                    setProjectProposal(null);
+                    setProjectName("");
+                    setProjectDescription("");
+                    setProjectGoal("");
+                    setProjectType("development");
+                    setGenerateMockData(true);
+                  }}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 text-sm text-purple-900">
+                Proposed values are ready. Review and approve to create the project.
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="border rounded-lg p-3">
+                  <div className="text-xs uppercase text-gray-500 mb-1">Jira key</div>
+                  <div className="font-semibold">{projectProposal.jira_project_key}</div>
+                </div>
+                <div className="border rounded-lg p-3">
+                  <div className="text-xs uppercase text-gray-500 mb-1">Confluence key</div>
+                  <div className="font-semibold">{projectProposal.confluence_space_key}</div>
+                </div>
+                <div className="border rounded-lg p-3">
+                  <div className="text-xs uppercase text-gray-500 mb-1">GitHub repo</div>
+                  <div className="font-semibold">{projectProposal.github_repo_name}</div>
+                </div>
+                <div className="border rounded-lg p-3">
+                  <div className="text-xs uppercase text-gray-500 mb-1">ServiceNow service</div>
+                  <div className="font-semibold">{projectProposal.servicenow_service_name}</div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleCreateProject}
+                  disabled={projectSubmitting}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50"
+                >
+                  {projectSubmitting ? "Creating..." : "Approve & Create Project"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProjectProposal(null)}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                >
+                  Edit proposal
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {projects.length > 0 && (
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800">Projects</h2>
+              <p className="text-xs text-gray-500">
+                Check projects to include them in the Dashboard. All checked projects will be aggregated across all dashboard widgets.
+              </p>
+            </div>
+            <div className="text-xs font-medium text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-200 self-start sm:self-auto">
+              {selectedProjects.length} of {projects.length} included in dashboard
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {projects.map((project) => (
+              <div
+                key={project.id}
+                onClick={() => toggleProjectSelection(project.id)}
+                className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                  project.is_selected
+                    ? "border-blue-400 bg-blue-50/40 ring-1 ring-blue-300 shadow-sm"
+                    : "border-gray-200 bg-white hover:border-gray-300 opacity-75"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-semibold text-gray-900 truncate">{project.name}</h3>
+                    <p className="text-xs text-gray-500 line-clamp-1">{project.description || "No description."}</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={project.is_selected}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      toggleProjectSelection(project.id);
+                    }}
+                    className="h-4 w-4 mt-0.5 rounded accent-blue-600 cursor-pointer"
+                  />
+                </div>
+
+                <div className="pt-2 border-t border-gray-100 space-y-1 text-xs text-gray-600">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Jira:</span>
+                    <span className="font-mono text-gray-700">{project.jira_project_key || "—"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Confluence:</span>
+                    <span className="font-mono text-gray-700">{project.confluence_space_key || "—"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">GitHub:</span>
+                    <span className="font-mono text-gray-700">{project.github_repo_name || "—"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">ServiceNow:</span>
+                    <span className="font-mono text-gray-700">{project.servicenow_service_name || "—"}</span>
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-xs">
+                  <span className={project.is_selected ? "text-blue-700 font-medium" : "text-gray-400"}>
+                    {project.is_selected ? "✓ Included in Dashboard" : "Excluded from Dashboard"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteProject(project.id);
+                    }}
+                    className="text-gray-400 hover:text-red-600 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50 text-[11px]"
+                    title="Delete project"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center gap-2 text-gray-500">
           <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />

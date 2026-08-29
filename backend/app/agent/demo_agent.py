@@ -13,6 +13,7 @@ from app.agent.tools.github_tools import create_github_tools
 from app.agent.tools.jira_tools import create_jira_tools
 from app.agent.tools.servicenow_tools import create_servicenow_tools
 from app.models.integration import Integration
+from app.models.project import Project
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -52,11 +53,27 @@ def _extract_proposal(content: str) -> tuple[Optional[dict], str]:
     return None, content
 
 
+def build_project_context(project: Optional[Project]) -> dict:
+    """Build a project context dict from the selected project or return an empty context."""
+    if project is None:
+        return {}
+
+    return {
+        "project_id": project.id,
+        "project_name": project.name,
+        "jira_project_key": project.jira_project_key,
+        "confluence_space_key": project.confluence_space_key,
+        "github_repo_name": project.github_repo_name,
+        "servicenow_service_name": project.servicenow_service_name,
+    }
+
+
 async def demo_chat(
     message: str,
     user: User,
     session_id: str,
     db: Session,
+    project: Optional[Project] = None,
 ) -> dict:
     """Process a chat message using keyword-based tool selection (no LLM needed).
 
@@ -65,6 +82,7 @@ async def demo_chat(
     session = get_or_create_session(session_id, user.id)
     integrations = _get_user_integrations(user.id, db)
     tools_map = _build_tools_map(integrations)
+    project_context = build_project_context(project)
 
     msg_lower = message.lower()
     systems_queried = []
@@ -87,7 +105,7 @@ async def demo_chat(
             systems_queried.append("jira")
             create_tool = next((t for t in tools_map["jira"] if t.name == "jira_create_story"), None)
             if create_tool:
-                project_id = _detect_project(msg_lower) or "PAY"
+                project_id = _detect_project(msg_lower, project_context) or project_context.get("jira_project_key") or "PAY"
                 title = _extract_story_title(message)
                 result = create_tool.invoke({
                     "project_id": project_id,
@@ -104,7 +122,7 @@ async def demo_chat(
             systems_queried.append("github")
             create_tool = next((t for t in tools_map["github"] if t.name == "github_create_branch"), None)
             if create_tool:
-                repo_id = _detect_repo(msg_lower) or "repo-1"
+                repo_id = _detect_repo(msg_lower, project_context) or project_context.get("github_repo_name") or "repo-1"
                 branch_name = _extract_branch_name(message)
                 result = create_tool.invoke({
                     "repo_id": repo_id,
@@ -115,7 +133,7 @@ async def demo_chat(
     # Status/overview questions -> query Jira board + GitHub PRs
     elif any(kw in msg_lower for kw in ["status", "overview", "progress", "how is", "what's happening"]):
         # Determine project
-        project_id = _detect_project(msg_lower)
+        project_id = _detect_project(msg_lower, project_context)
 
         if tools_map["jira"]:
             systems_queried.append("jira")
@@ -134,7 +152,7 @@ async def demo_chat(
 
         if tools_map["github"] and project_id:
             systems_queried.append("github")
-            repo_id = _project_to_repo(project_id)
+            repo_id = _project_to_repo(project_id, project_context)
             if repo_id:
                 pr_tool = next((t for t in tools_map["github"] if t.name == "github_get_pull_requests"), None)
                 if pr_tool:
@@ -142,7 +160,7 @@ async def demo_chat(
 
     # Sprint/velocity questions -> Jira sprints
     elif any(kw in msg_lower for kw in ["sprint", "velocity", "plan", "next sprint"]):
-        project_id = _detect_project(msg_lower)
+        project_id = _detect_project(msg_lower, project_context)
         if tools_map["jira"]:
             systems_queried.append("jira")
             if project_id:
@@ -157,7 +175,7 @@ async def demo_chat(
     elif any(kw in msg_lower for kw in ["story", "stories", "assigned", "my work", "backlog"]):
         if tools_map["jira"]:
             systems_queried.append("jira")
-            project_id = _detect_project(msg_lower)
+            project_id = _detect_project(msg_lower, project_context)
             status = _detect_status(msg_lower)
 
             # If the user is asking about a specific person's work, resolve the
@@ -195,7 +213,7 @@ async def demo_chat(
         if tools_map["servicenow"]:
             systems_queried.append("servicenow")
             service = None
-            proj = _detect_project(msg_lower)
+            proj = _detect_project(msg_lower, project_context)
             service_map = {"PAY": "payment-service", "CART": "cart-service", "AUTH": "auth-service", "PROD": "product-service", "ORD": "order-service"}
             if proj:
                 service = service_map.get(proj)
@@ -228,7 +246,7 @@ async def demo_chat(
     elif any(kw in msg_lower for kw in ["pr", "pull request", "commit", "branch", "code", "repo"]):
         if tools_map["github"]:
             systems_queried.append("github")
-            repo_id = _detect_repo(msg_lower)
+            repo_id = _detect_repo(msg_lower, project_context)
             if repo_id:
                 pr_tool = next((t for t in tools_map["github"] if t.name == "github_get_pull_requests"), None)
                 if pr_tool:
@@ -304,8 +322,8 @@ async def demo_chat(
 
 # --- Helper functions for keyword extraction ---
 
-def _detect_project(msg: str) -> Optional[str]:
-    """Detect which project the user is asking about."""
+def _detect_project(msg: str, project_context: Optional[dict] = None) -> Optional[str]:
+    """Detect which project the user is asking about, defaulting to the active project when available."""
     project_keywords = {
         "PAY": ["payment", "pay", "stripe", "apple pay", "google pay"],
         "CART": ["cart", "shopping", "checkout", "coupon"],
@@ -316,11 +334,15 @@ def _detect_project(msg: str) -> Optional[str]:
     for proj_id, keywords in project_keywords.items():
         if any(kw in msg for kw in keywords):
             return proj_id
+    if project_context and project_context.get("jira_project_key"):
+        return project_context["jira_project_key"]
     return None
 
 
-def _project_to_repo(project_id: str) -> Optional[str]:
-    """Map project ID to GitHub repo ID."""
+def _project_to_repo(project_id: str, project_context: Optional[dict] = None) -> Optional[str]:
+    """Map project ID to GitHub repo ID, preferring the active project when available."""
+    if project_context and project_context.get("github_repo_name"):
+        return project_context["github_repo_name"]
     mapping = {"PAY": "repo-1", "CART": "repo-2", "AUTH": "repo-3", "PROD": "repo-4", "ORD": "repo-5"}
     return mapping.get(project_id)
 
@@ -432,8 +454,8 @@ def _extract_story_keyword(message: str) -> Optional[str]:
     return " ".join(topic[:4])
 
 
-def _detect_repo(msg: str) -> Optional[str]:
-    """Detect which repo the user is asking about."""
+def _detect_repo(msg: str, project_context: Optional[dict] = None) -> Optional[str]:
+    """Detect which repo the user is asking about, defaulting to the active project repo when available."""
     repo_keywords = {
         "repo-1": ["payment-service", "payment service", "payment repo"],
         "repo-2": ["cart-service", "cart service", "cart repo"],
@@ -444,10 +466,11 @@ def _detect_repo(msg: str) -> Optional[str]:
     for repo_id, keywords in repo_keywords.items():
         if any(kw in msg for kw in keywords):
             return repo_id
-    # Also check project keywords
-    project_id = _detect_project(msg)
+    project_id = _detect_project(msg, project_context)
     if project_id:
-        return _project_to_repo(project_id)
+        return _project_to_repo(project_id, project_context)
+    if project_context and project_context.get("github_repo_name"):
+        return project_context["github_repo_name"]
     return None
 
 

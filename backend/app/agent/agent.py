@@ -2,12 +2,14 @@
 
 import json
 import logging
+import uuid
 from typing import Optional
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
 
+from app.agent.markup_utils import clean_tool_markup, parse_text_tool_calls
 from app.agent.prompts import ROLE_PROMPTS
 from app.agent.session import ChatMessage, ChatSession, get_or_create_session
 from app.agent.tools.confluence_tools import create_confluence_tools
@@ -16,6 +18,7 @@ from app.agent.tools.jira_tools import create_jira_tools
 from app.agent.tools.servicenow_tools import create_servicenow_tools
 from app.core.config import settings
 from app.models.integration import Integration
+from app.models.project import Project
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -141,11 +144,43 @@ async def execute_proposed_action(proposal: dict, integrations: list[Integration
             return f"❌ Unknown action type: {action}"
 
 
+def _build_project_context(project: Optional[Project], user_id: int, db: Session) -> str:
+    """Summarize the active project and all available user projects for the orchestrator prompt."""
+    lines = []
+    if project:
+        lines.append(f"Active Project: {project.name}")
+        lines.append(f"- Jira key: {project.jira_project_key or 'not set'}")
+        lines.append(f"- Confluence space: {project.confluence_space_key or 'not set'}")
+        lines.append(f"- GitHub repo: {project.github_repo_name or 'not set'}")
+        lines.append(f"- ServiceNow service: {project.servicenow_service_name or 'not set'}")
+    else:
+        lines.append("No single active project selected.")
+
+    all_projects = db.query(Project).filter(Project.user_id == user_id).all()
+    if all_projects:
+        lines.append("\nAvailable User Projects:")
+        for p in all_projects:
+            flags = []
+            if project and p.id == project.id:
+                flags.append("ACTIVE")
+            if p.is_selected:
+                flags.append("SELECTED")
+            flag_str = f" [{', '.join(flags)}]" if flags else ""
+            lines.append(
+                f"- '{p.name}'{flag_str}: Jira Key={p.jira_project_key or 'None'}, "
+                f"Confluence Space={p.confluence_space_key or 'None'}, "
+                f"GitHub Repo={p.github_repo_name or 'None'}, "
+                f"ServiceNow Service={p.servicenow_service_name or 'None'}"
+            )
+    return "\n".join(lines)
+
+
 async def chat(
     message: str,
     user: User,
     session_id: str,
     db: Session,
+    project: Optional[Project] = None,
 ) -> dict:
     """Process a chat message through the agent and return the response.
 
@@ -166,11 +201,13 @@ async def chat(
     # Build system prompt
     role_prompt = ROLE_PROMPTS.get(user.role.value, ROLE_PROMPTS["developer"])
     integrations_context = _build_integrations_context(integrations)
+    project_context = _build_project_context(project, user.id, db)
     system_prompt = role_prompt.format(
         integrations_context=integrations_context,
         user_name=user.name,
         user_role=user.role.value.replace("_", " ").title(),
     )
+    system_prompt += f"\n\nProject context:\n{project_context}\n"
 
     # Initialize the orchestrator LLM. This is ALWAYS OpenAI: it needs native
     # function calling to decide which tools to invoke from the user's intent.
@@ -204,16 +241,26 @@ async def chat(
 
     # Agent loop: call LLM, execute tools, repeat until done
     max_iterations = 10
+    response = None
     for _ in range(max_iterations):
         response = await llm_with_tools.ainvoke(messages)
 
-        # Check if the model wants to call tools
+        tool_calls_to_run = []
         if hasattr(response, "tool_calls") and response.tool_calls:
+            tool_calls_to_run = response.tool_calls
+        elif hasattr(response, "content") and response.content:
+            text_calls = parse_text_tool_calls(str(response.content))
+            if text_calls:
+                tool_calls_to_run = text_calls
+
+        # Check if the model wants to call tools
+        if tool_calls_to_run:
             messages.append(response)
 
-            for tool_call in response.tool_calls:
+            for tool_call in tool_calls_to_run:
                 tool_name = tool_call["name"]
-                tool_args = tool_call["args"]
+                tool_args = tool_call.get("args") or {}
+                call_id = tool_call.get("id") or f"call_{uuid.uuid4().hex[:8]}"
 
                 # Track which systems are queried
                 if "jira" in tool_name:
@@ -237,18 +284,9 @@ async def chat(
                     tool_result = f"Tool {tool_name} not found"
 
                 # Add tool result as a tool message
-                from langchain_core.messages import ToolMessage
-                messages.append(ToolMessage(content=str(tool_result), tool_call_id=tool_call["id"]))
+                messages.append(ToolMessage(content=str(tool_result), tool_call_id=call_id))
         else:
             # No more tool calls, we have our final response
-            final_content = response.content
-
-            # Check for proposals in the response
-            proposal, clean_content = _extract_proposal(final_content)
-
-            # If there's a proposal embedded in the response, the agent likely formed a summary too
-            # Let's check the raw content for proposal patterns in tool results
-            # The proposal is more likely in tool results, re-check
             break
 
     # Check if any tool call returned a proposal
@@ -260,7 +298,8 @@ async def chat(
                 proposal = p
                 break
 
-    final_response = response.content if hasattr(response, "content") else str(response)
+    raw_response = response.content if (response and hasattr(response, "content")) else str(response or "")
+    final_response = clean_tool_markup(raw_response)
 
     # Synthesis pass: re-phrase the orchestrator's answer using the configured
     # synthesis provider (1min.ai by default, or OpenAI). Skip it when there is
@@ -275,6 +314,7 @@ async def chat(
             role=user.role.value,
             system_prompt=system_prompt,
         )
+        final_response = clean_tool_markup(final_response)
 
     # Store in session
     session.messages.append(ChatMessage(role="user", content=message))

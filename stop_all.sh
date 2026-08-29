@@ -1,52 +1,48 @@
 #!/bin/bash
-# MAHALO3 - Stop all services
+# MAHALO3 - Stop all services (Linux/macOS)
 # Usage: ./stop_all.sh
+
+set -e
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PIDS_DIR="$PROJECT_DIR/.pids"
 
-echo "🛑 Stopping MAHALO3 services..."
+echo ""
+echo "============================================"
+echo "  MAHALO3 - Stopping all services"
+echo "============================================"
 echo ""
 
-stop_service() {
-    local name=$1
-    local pid_file="$PIDS_DIR/$name.pid"
+kill_port() {
+    local port="$1"
+    local service_name="$2"
 
-    if [ -f "$pid_file" ]; then
-        pid=$(cat "$pid_file")
-        if kill -0 "$pid" 2>/dev/null; then
-            # Kill the process group to catch child processes (e.g., Next.js workers)
-            kill -- -$(ps -o pgid= -p "$pid" | tr -d ' ') 2>/dev/null || kill "$pid" 2>/dev/null
-            wait "$pid" 2>/dev/null
-            echo "  ✓ Stopped $name (PID $pid)"
-        else
-            echo "  - $name was not running"
-        fi
-        rm -f "$pid_file"
-    else
-        echo "  - No PID file for $name"
+    local pids
+    pids=$(lsof -ti tcp:"$port" 2>/dev/null || ss -ltnp "sport = :$port" 2>/dev/null | awk 'NR>1 {print $NF}' | sed -E 's/.*pid=([0-9]+).*/\1/' || true)
+
+    if [ -n "$pids" ]; then
+        for pid in $pids; do
+            if [ -n "$pid" ] && [ "$pid" != "" ]; then
+                kill -9 "$pid" 2>/dev/null || true
+                echo "  Stopped $service_name (PID $pid) on port $port"
+            fi
+        done
     fi
 }
 
-stop_service "frontend"
-stop_service "backend"
-stop_service "servicenow"
-stop_service "github"
-stop_service "confluence"
-stop_service "jira"
+kill_port 5001 "Mock Jira"
+kill_port 5002 "Mock Confluence"
+kill_port 5003 "Mock GitHub"
+kill_port 5004 "Mock ServiceNow"
+kill_port 8008 "Backend"
+kill_port 3000 "Frontend"
 
-# Also kill any orphaned processes on the known ports
-for port in 5001 5002 5003 5004 8008 3000; do
-    pids=$(fuser ${port}/tcp 2>/dev/null | tr -s ' ')
-    if [ -n "$pids" ]; then
-        for pid in $pids; do
-            kill -9 $pid 2>/dev/null
-        done
-        echo "  ✓ Killed process(es) on port $port"
-    fi
-done
-
-rm -rf "$PIDS_DIR"
+if [ -d "$PIDS_DIR" ]; then
+    rm -rf "$PIDS_DIR"
+fi
 
 echo ""
-echo "✅ All services stopped."
+echo "============================================"
+echo "  All services stopped."
+echo "============================================"
+echo ""

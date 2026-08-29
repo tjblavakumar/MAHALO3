@@ -7,7 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import init_db
-from app.routers import auth, chat, health, integrations, proxy
+from app.models.project import Project  # noqa: F401
+from app.routers import auth, chat, health, integrations, projects, proxy
 
 # Configure logging
 logging.basicConfig(
@@ -39,6 +40,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["health"])
     app.include_router(auth.router)
     app.include_router(integrations.router)
+    app.include_router(projects.router)
     app.include_router(chat.router)
     app.include_router(proxy.router)
 

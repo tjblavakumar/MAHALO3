@@ -84,13 +84,14 @@ Open http://localhost:3000 in your browser.
 
 1. **Register** — Create an account at `/register` (choose your role: Product Manager, Developer, or Executive)
 2. **Login** — Sign in at `/login`
-3. **Connect Integrations** — Go to Connections page and add:
+3. **Connect Integrations** — Go to Connections page (`/connections`) and add:
    - Jira: URL `http://localhost:5001`, Token `mock-jira-token-12345`
    - Confluence: URL `http://localhost:5002`, Token `mock-confluence-token-12345`
    - GitHub: URL `http://localhost:5003`, Token `mock-github-token-12345`
    - ServiceNow: URL `http://localhost:5004`, Token `mock-servicenow-token-12345`
-4. **Dashboard** — View your role-specific dashboard with live widgets
-5. **Chat** — Interact with the AI agent
+4. **Create & Manage Projects** — Under the Connections page, click **"+ Create New Project"** to define custom initiatives. The system proposes unique system keys and auto-bootstraps initial Jira stories, Confluence documentation, and GitHub repositories.
+5. **Dashboard** — Select one or multiple projects via the sidebar or Connections page to view real-time aggregated metrics across all your active initiatives.
+6. **Chat** — Interact with the AI agent to query cross-system telemetry, write stories, compare projects, and propose actions.
 
 ## Architecture
 
@@ -135,9 +136,14 @@ Each mock service directory contains:
 ## Features
 
 ### Per Persona
-- **Product Manager**: Sprint boards, velocity charts, project status, story creation
-- **Executive**: Portfolio overview, key metrics, risk assessment, cross-project + production health
-- **Developer**: Assigned stories, open PRs, recent commits, branch creation
+- **Product Manager**: Multi-project sprint boards with tabbed switching, velocity charts, completion progress, story creation & proposals
+- **Executive**: Multi-project portfolio overview, aggregate key metrics with project breakdowns, cross-initiative risk assessment, production deployment & incident health
+- **Developer**: Assigned stories, open PRs, recent commits, feature branch proposals
+
+### Dynamic Project Management & Resource Bootstrapping
+- **Project Scope Engine**: Users can manage multiple projects (e.g. Payment Gateway, Shopping Cart, Customer Expansion, etc.) under unified service connections.
+- **Automated Resource Bootstrapping**: Creating a project automatically initializes the corresponding project in Jira (with setup stories), Confluence space (with project overview pages), and GitHub repo (with README.md).
+- **Multi-Project Dashboard Aggregation**: Check/uncheck projects in the sidebar or Connections page to dynamically aggregate metrics across one, several, or all projects in real time.
 
 ### Connected Systems
 - **Jira** — projects, sprints, stories, developers
@@ -149,8 +155,9 @@ Each mock service directory contains:
 
 ### Agent Capabilities
 - **Read**: Auto-queries Jira, Confluence, GitHub, and ServiceNow and presents correlated results
-- **Write**: Proposes actions (create/update story, create branch, open incident) for user approval
-- **Multi-system**: A single question can search and correlate across all connected systems
+- **Write**: Proposes actions (create/update story, create branch, open incident) for user approval via interactive proposal cards
+- **Multi-system & Multi-project**: A single prompt can search, compare, and correlate across all connected systems and user projects (e.g. *"what is common between project A and project B"*)
+- **Robust Tool Invocation & Sanitization**: Handles structured function calling and parses/cleans raw LLM tool call tokens (such as DSML/XML tags) for seamless user-facing responses
 - **Name resolution**: Resolves people by name (e.g. "Raj", "assigned to me") to the right account before filtering
 
 ## LLM Configuration

@@ -35,6 +35,25 @@ def list_projects(x_api_token: Optional[str] = Header(None)):
     return {"projects": PROJECTS}
 
 
+@app.post("/projects", status_code=201)
+def create_project(project: dict, x_api_token: Optional[str] = Header(None)):
+    verify_token(x_api_token)
+    project_id = str(project.get("id") or project.get("project_id") or "PROJ").upper()
+    if any(p["id"] == project_id for p in PROJECTS):
+        raise HTTPException(status_code=409, detail="Project already exists")
+
+    new_project = {
+        "id": project_id,
+        "name": project.get("name") or project_id,
+        "description": project.get("description") or "",
+        "status": project.get("status") or "active",
+        "lead": project.get("lead") or "dev-1",
+    }
+    PROJECTS.append(new_project)
+    store.save()
+    return new_project
+
+
 @app.get("/projects/{project_id}")
 def get_project(project_id: str, x_api_token: Optional[str] = Header(None)):
     verify_token(x_api_token)

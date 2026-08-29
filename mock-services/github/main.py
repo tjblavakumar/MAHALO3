@@ -29,6 +29,29 @@ def health():
 
 # --- Repos ---
 
+@app.post("/repos", status_code=201)
+def create_repo(repo: dict, x_api_token: Optional[str] = Header(None)):
+    verify_token(x_api_token)
+    repo_id = str(repo.get("name") or "repo").lower().strip()
+    if any(r["id"] == repo_id for r in REPOS):
+        raise HTTPException(status_code=409, detail="Repository already exists")
+
+    new_repo = {
+        "id": repo_id,
+        "name": repo_id,
+        "description": repo.get("description") or "",
+        "language": repo.get("language") or "Python",
+        "default_branch": repo.get("default_branch") or "main",
+        "stars": 0,
+        "open_issues": 0,
+        "last_push": "2026-08-29",
+    }
+    REPOS.append(new_repo)
+    BRANCHES.setdefault(repo_id, [{"name": "main", "protected": True, "last_commit": "2026-08-29"}])
+    store.save()
+    return new_repo
+
+
 @app.get("/repos")
 def list_repos(x_api_token: Optional[str] = Header(None)):
     verify_token(x_api_token)
@@ -208,6 +231,21 @@ def create_commit(
 
 
 # --- Stats ---
+
+@app.post("/repos/{repo_id}/readme", status_code=201)
+def create_readme(repo_id: str, readme: dict, x_api_token: Optional[str] = Header(None)):
+    verify_token(x_api_token)
+    if repo_id not in BRANCHES:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    doc = {
+        "repo_id": repo_id,
+        "title": readme.get("title") or "README.md",
+        "content": readme.get("content") or "",
+        "updated_at": "2026-08-29",
+    }
+    return doc
+
 
 @app.get("/repos/{repo_id}/stats")
 def get_stats(repo_id: str, x_api_token: Optional[str] = Header(None)):

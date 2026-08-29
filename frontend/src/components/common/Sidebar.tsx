@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { useProjects } from "@/contexts/ProjectContext";
 
 const ROLE_LABELS: Record<string, string> = {
   product_manager: "Product Manager",
@@ -19,6 +20,7 @@ const navigation = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const { projects, selectedProjects, toggleProjectSelection } = useProjects();
 
   return (
     <aside className="w-64 bg-gray-900 text-white flex flex-col min-h-screen">
@@ -48,6 +50,48 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Projects selection */}
+      <div className="p-4 border-t border-gray-700">
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+            Projects
+          </label>
+          <span className="text-[10px] text-gray-400 font-medium">
+            {selectedProjects.length}/{projects.length} in dash
+          </span>
+        </div>
+        {projects.length > 0 ? (
+          <div className="space-y-1.5">
+            {projects.map((project) => (
+              <label
+                key={project.id}
+                className={`flex items-center gap-2.5 rounded border px-2.5 py-2 text-xs transition-colors cursor-pointer select-none ${
+                  project.is_selected
+                    ? "border-blue-500/70 bg-blue-950/50 text-white font-medium"
+                    : "border-gray-700/80 bg-gray-800/80 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={project.is_selected}
+                  onChange={async () => {
+                    await toggleProjectSelection(project.id);
+                  }}
+                  className="h-4 w-4 rounded accent-blue-500 cursor-pointer"
+                />
+                <span className="truncate flex-1">
+                  {project.name}
+                </span>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-gray-600 bg-gray-800/60 px-3 py-2 text-xs text-gray-400">
+            No projects yet
+          </div>
+        )}
+      </div>
 
       {/* User section */}
       <div className="p-4 border-t border-gray-700">

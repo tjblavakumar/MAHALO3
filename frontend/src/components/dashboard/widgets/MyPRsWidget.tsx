@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useProjects } from "@/contexts/ProjectContext";
 import { api } from "@/services/api";
 
 interface PullRequest {
@@ -15,18 +16,27 @@ interface PullRequest {
 }
 
 export default function MyPRsWidget({ developerId = "dev-1" }: { developerId?: string }) {
+  const { projects: userProjects, activeProject } = useProjects();
   const [prs, setPRs] = useState<PullRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const repoIds = useMemo(() => {
+    const list = userProjects
+      .map((project) => project.github_repo_name)
+      .filter((value): value is string => Boolean(value));
+    if (list.length > 0) return list;
+    if (activeProject?.github_repo_name) return [activeProject.github_repo_name];
+    return [];
+  }, [userProjects, activeProject]);
+
   useEffect(() => {
     loadData();
-  }, [developerId]);
+  }, [developerId, repoIds]);
 
   async function loadData() {
     setLoading(true);
-    const repos = ["repo-1", "repo-2", "repo-3", "repo-4", "repo-5"];
     const allPRs: PullRequest[] = [];
-    for (const repo of repos) {
+    for (const repo of repoIds) {
       const result = await api.get<{ pull_requests: PullRequest[] }>(
         `/proxy/github/repos/${repo}/pulls?author_id=${developerId}`
       );

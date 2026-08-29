@@ -23,20 +23,28 @@ interface ProjectStatus {
   percentComplete: number;
 }
 
-export default function ProjectStatusWidget() {
+export default function ProjectStatusWidget({ selectedProjects = [] }: { selectedProjects?: Array<{ jira_project_key: string | null; name: string }> }) {
   const [projects, setProjects] = useState<ProjectStatus[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedProjects]);
 
   async function loadData() {
     setLoading(true);
     const projResult = await api.get<{ projects: Project[] }>("/proxy/jira/projects");
     if (projResult.data) {
+      const selectedJiraKeys = selectedProjects
+        .map((project) => project.jira_project_key)
+        .filter((value): value is string => Boolean(value));
+
+      const filteredProjects = selectedJiraKeys.length > 0
+        ? projResult.data.projects.filter((proj) => selectedJiraKeys.includes(proj.id))
+        : projResult.data.projects;
+
       const statuses: ProjectStatus[] = [];
-      for (const proj of projResult.data.projects) {
+      for (const proj of filteredProjects) {
         const storiesResult = await api.get<StoryData>(`/proxy/jira/projects/${proj.id}/stories`);
         if (storiesResult.data) {
           const stories = storiesResult.data.stories;

@@ -28,6 +28,23 @@ def health():
 
 # --- Spaces ---
 
+@app.post("/spaces", status_code=201)
+def create_space(space: dict, x_api_token: Optional[str] = Header(None)):
+    verify_token(x_api_token)
+    space_id = str(space.get("id") or "SPACE").upper()
+    if any(s["id"] == space_id for s in SPACES):
+        raise HTTPException(status_code=409, detail="Space already exists")
+
+    new_space = {
+        "id": space_id,
+        "name": space.get("name") or space_id,
+        "description": space.get("description") or "",
+    }
+    SPACES.append(new_space)
+    store.save()
+    return new_space
+
+
 @app.get("/spaces")
 def list_spaces(x_api_token: Optional[str] = Header(None)):
     verify_token(x_api_token)
@@ -80,6 +97,26 @@ def list_pages(space_id: str, x_api_token: Optional[str] = Header(None)):
         if p["space_id"] == space_id
     ]
     return {"pages": pages, "total": len(pages)}
+
+
+@app.post("/spaces/{space_id}/pages", status_code=201)
+def create_page(space_id: str, page: dict, x_api_token: Optional[str] = Header(None)):
+    verify_token(x_api_token)
+    if not any(s["id"] == space_id for s in SPACES):
+        raise HTTPException(status_code=404, detail="Space not found")
+
+    page_id = str(page.get("id") or f"{space_id}-{len(PAGES) + 1:03d}").upper()
+    new_page = {
+        "id": page_id,
+        "space_id": space_id,
+        "title": page.get("title") or "New page",
+        "author": page.get("author") or "System",
+        "last_updated": page.get("last_updated") or "2026-08-29",
+        "content": page.get("content") or "",
+    }
+    PAGES.append(new_page)
+    store.save()
+    return new_page
 
 
 # --- Pages ---

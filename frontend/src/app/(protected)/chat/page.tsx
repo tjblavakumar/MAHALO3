@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useProjects } from "@/contexts/ProjectContext";
 import { api } from "@/services/api";
 import ChatInput from "@/components/chat/ChatInput";
 import ChatMessage from "@/components/chat/ChatMessage";
@@ -35,6 +36,7 @@ interface ChatApiResponse {
 }
 
 export default function ChatPage() {
+  const { activeProject } = useProjects();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -65,6 +67,7 @@ export default function ChatPage() {
     const result = await api.post<ChatApiResponse>("/chat", {
       message,
       session_id: sessionId,
+      project_id: activeProject?.id ?? null,
     });
 
     if (result.data) {
