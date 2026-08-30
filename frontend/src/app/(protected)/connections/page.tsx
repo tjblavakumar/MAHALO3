@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api } from "@/services/api";
 import { useProjects } from "@/contexts/ProjectContext";
+import { useRequiredConnections } from "@/hooks/useRequiredConnections";
 import ViewDataModal from "@/components/connections/ViewDataModal";
 import type { Integration, Project, ProjectProposal } from "@/types";
 
@@ -54,6 +56,8 @@ export default function ConnectionsPage() {
   const [projectType, setProjectType] = useState("development");
   const [generateMockData, setGenerateMockData] = useState(true);
 
+  const { isConfigured: allRequiredConnectionsReady, loading: connectionsLoading, refresh: refreshIntegrations } = useRequiredConnections();
+
   useEffect(() => {
     loadIntegrations();
     loadProjects();
@@ -90,7 +94,8 @@ export default function ConnectionsPage() {
     } else {
       setShowForm(false);
       resetForm();
-      loadIntegrations();
+      // Refresh the shared connections context so sidebar/dashboard update immediately
+      await refreshIntegrations();
     }
     setSubmitting(false);
   }
@@ -112,6 +117,8 @@ export default function ConnectionsPage() {
       delete next[id];
       return next;
     });
+    // Refresh the shared connections context so sidebar/dashboard update immediately
+    await refreshIntegrations();
   }
 
   async function handleDeleteProject(projectId: number) {
@@ -200,7 +207,13 @@ export default function ConnectionsPage() {
         <div className="flex gap-3">
           <button
             onClick={() => setShowProjectForm(true)}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+            disabled={!allRequiredConnectionsReady}
+            title={
+              !allRequiredConnectionsReady
+                ? "Configure Jira, Confluence, and GitHub connections before creating a project."
+                : ""
+            }
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             + Create New Project
           </button>
@@ -453,7 +466,23 @@ export default function ConnectionsPage() {
         </div>
       )}
 
-      {projects.length > 0 && (
+      {!connectionsLoading && !allRequiredConnectionsReady && (
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="text-center py-8">
+            <p className="text-4xl mb-4">📁</p>
+            <p className="text-gray-500 mb-2">Connect required services to view your projects.</p>
+            <p className="text-gray-400 text-sm">
+              Configure{" "}
+              <Link href="/connections" className="text-blue-600 hover:underline font-medium">
+                Jira, Confluence, and GitHub
+              </Link>{" "}
+              to access your project data.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {allRequiredConnectionsReady && projects.length > 0 && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
             <div>

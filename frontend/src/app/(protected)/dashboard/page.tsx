@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useProjects } from "@/contexts/ProjectContext";
+import { useRequiredConnections } from "@/hooks/useRequiredConnections";
 import SprintBoardWidget from "@/components/dashboard/widgets/SprintBoardWidget";
 import VelocityWidget from "@/components/dashboard/widgets/VelocityWidget";
 import ProjectStatusWidget from "@/components/dashboard/widgets/ProjectStatusWidget";
@@ -96,6 +97,35 @@ function DeveloperDashboard({ selectedProjects }: { selectedProjects: Project[] 
 export default function DashboardPage() {
   const { user } = useAuth();
   const { selectedProjects, loading: projectsLoading } = useProjects();
+  const { isConfigured, loading: connectionsLoading } = useRequiredConnections();
+
+  if (!connectionsLoading && !isConfigured) {
+    return (
+      <div className="p-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600 mt-1">
+            Welcome back, {user?.name}!{" "}
+            <span className="text-blue-600 font-medium">
+              {user ? ROLE_LABELS[user.role] || user.role : ""}
+            </span>{" "}
+            view
+          </p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-12 text-center">
+          <p className="text-4xl mb-4">📊</p>
+          <p className="text-gray-500 mb-2">No connections configured yet.</p>
+          <p className="text-gray-400 text-sm">
+            Configure{" "}
+            <a href="/connections" className="text-blue-600 hover:underline font-medium">
+              Jira, Confluence, and GitHub
+            </a>{" "}
+            on the Connections page to view your dashboard.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8">

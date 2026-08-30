@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProjects } from "@/contexts/ProjectContext";
+import { useRequiredConnections } from "@/hooks/useRequiredConnections";
 
 const ROLE_LABELS: Record<string, string> = {
   product_manager: "Product Manager",
@@ -21,6 +22,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { projects, selectedProjects, toggleProjectSelection } = useProjects();
+  const { isConfigured } = useRequiredConnections();
 
   return (
     <aside className="w-64 bg-gray-900 text-white flex flex-col min-h-screen">
@@ -61,7 +63,11 @@ export default function Sidebar() {
             {selectedProjects.length}/{projects.length} in dash
           </span>
         </div>
-        {projects.length > 0 ? (
+        {!isConfigured ? (
+          <div className="rounded-lg border border-dashed border-gray-600 bg-gray-800/60 px-3 py-2 text-xs text-gray-400">
+            Configure connections to see your projects
+          </div>
+        ) : projects.length > 0 ? (
           <div className="space-y-1.5">
             {projects.map((project) => (
               <label

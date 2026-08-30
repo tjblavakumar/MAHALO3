@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useProjects } from "@/contexts/ProjectContext";
+import { useRequiredConnections } from "@/hooks/useRequiredConnections";
 import { api } from "@/services/api";
 import ChatInput from "@/components/chat/ChatInput";
 import ChatMessage from "@/components/chat/ChatMessage";
@@ -37,6 +38,7 @@ interface ChatApiResponse {
 
 export default function ChatPage() {
   const { activeProject } = useProjects();
+  const { isConfigured, loading: connectionsLoading } = useRequiredConnections();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -137,7 +139,23 @@ export default function ChatPage() {
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          {messages.length === 0 && (
+          {messages.length === 0 && !connectionsLoading && !isConfigured && (
+            <div className="text-center py-16">
+              <p className="text-4xl mb-4">🔗</p>
+              <h2 className="text-lg font-medium text-gray-700 mb-2">
+                Connections Required
+              </h2>
+              <p className="text-gray-500 text-sm max-w-md mx-auto">
+                Please configure{" "}
+                <a href="/connections" className="text-blue-600 hover:underline font-medium">
+                  Jira, Confluence, and GitHub
+                </a>{" "}
+                on the Connections page to start chatting about your projects.
+              </p>
+            </div>
+          )}
+
+          {messages.length === 0 && !connectionsLoading && isConfigured && (
             <div className="text-center py-16">
               <p className="text-4xl mb-4">💬</p>
               <h2 className="text-lg font-medium text-gray-700 mb-2">
@@ -198,7 +216,7 @@ export default function ChatPage() {
 
         {/* Input Area */}
         <div className="border-t border-gray-200 bg-white px-6 py-4">
-          <ChatInput onSend={handleSend} disabled={isLoading} />
+          <ChatInput onSend={handleSend} disabled={isLoading || (!connectionsLoading && !isConfigured)} />
         </div>
       </div>
 
