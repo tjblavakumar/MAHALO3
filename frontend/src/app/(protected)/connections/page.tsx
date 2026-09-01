@@ -31,12 +31,10 @@ const PROJECT_TYPES = [
 
 export default function ConnectionsPage() {
   const { projects, selectedProjects, toggleProjectSelection, refreshProjects } = useProjects();
-  const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [testResults, setTestResults] = useState<Record<number, TestResult>>({});
   const [testingId, setTestingId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
   const [viewData, setViewData] = useState<Integration | null>(null);
   const [projectProposal, setProjectProposal] = useState<ProjectProposal | null>(null);
   const [projectFormError, setProjectFormError] = useState<string | null>(null);
@@ -56,25 +54,20 @@ export default function ConnectionsPage() {
   const [projectType, setProjectType] = useState("development");
   const [generateMockData, setGenerateMockData] = useState(true);
 
-  const { isConfigured: allRequiredConnectionsReady, loading: connectionsLoading, refresh: refreshIntegrations } = useRequiredConnections();
+  const {
+    integrations,
+    isConfigured: allRequiredConnectionsReady,
+    loading: connectionsLoading,
+    refresh: refreshIntegrations,
+  } = useRequiredConnections();
+
+  // The connections list is sourced from the shared ConnectionsContext, which
+  // waits for auth before fetching. `loading` mirrors that shared state.
+  const loading = connectionsLoading;
 
   useEffect(() => {
-    loadIntegrations();
-    loadProjects();
-  }, []);
-
-  async function loadIntegrations() {
-    setLoading(true);
-    const result = await api.get<Integration[]>("/integrations");
-    if (result.data) {
-      setIntegrations(result.data);
-    }
-    setLoading(false);
-  }
-
-  async function loadProjects() {
-    await refreshProjects();
-  }
+    void refreshProjects();
+  }, [refreshProjects]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -111,13 +104,13 @@ export default function ConnectionsPage() {
 
   async function handleDelete(id: number) {
     await api.delete(`/integrations/${id}`);
-    setIntegrations((prev) => prev.filter((i) => i.id !== id));
     setTestResults((prev) => {
       const next = { ...prev };
       delete next[id];
       return next;
     });
-    // Refresh the shared connections context so sidebar/dashboard update immediately
+    // Refresh the shared connections context so this page, the sidebar, and the
+    // dashboard all update immediately from a single source of truth.
     await refreshIntegrations();
   }
 
