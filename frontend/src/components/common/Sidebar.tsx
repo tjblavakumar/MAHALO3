@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProjects } from "@/contexts/ProjectContext";
 import { useRequiredConnections } from "@/hooks/useRequiredConnections";
+import ProjectMultiSelect from "@/components/common/ProjectMultiSelect";
 
 const ROLE_LABELS: Record<string, string> = {
   product_manager: "Product Manager",
@@ -21,8 +22,15 @@ const navigation = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
-  const { projects, selectedProjects, toggleProjectSelection } = useProjects();
-  const { isConfigured } = useRequiredConnections();
+  const {
+    projects,
+    selectedProjects,
+    toggleProjectSelection,
+    loading: projectsLoading,
+    syncing,
+    syncProjects,
+  } = useProjects();
+  const { isConfigured, loading: connectionsLoading } = useRequiredConnections();
 
   return (
     <aside className="w-64 bg-gray-900 text-white flex flex-col min-h-screen">
@@ -59,39 +67,41 @@ export default function Sidebar() {
           <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
             Projects
           </label>
-          <span className="text-[10px] text-gray-400 font-medium">
-            {selectedProjects.length}/{projects.length} in dash
-          </span>
+          <div className="flex items-center gap-2">
+            {!projectsLoading && isConfigured && projects.length > 0 && (
+              <span className="text-[10px] text-gray-400 font-medium">
+                {selectedProjects.length}/{projects.length} in dash
+              </span>
+            )}
+            {!connectionsLoading && !projectsLoading && isConfigured && (
+              <button
+                type="button"
+                onClick={() => {
+                  void syncProjects();
+                }}
+                disabled={syncing}
+                title="Import projects from your connected systems"
+                className="text-[10px] font-medium text-blue-400 hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {syncing ? "Syncing…" : "Sync"}
+              </button>
+            )}
+          </div>
         </div>
-        {!isConfigured ? (
+
+        {connectionsLoading || projectsLoading ? (
+          // Skeleton while project/connection data settles so we never flash a
+          // misleading empty or "configure connections" state on load.
+          <div className="h-9 w-full animate-pulse rounded-lg border border-gray-700 bg-gray-800/60" />
+        ) : !isConfigured ? (
           <div className="rounded-lg border border-dashed border-gray-600 bg-gray-800/60 px-3 py-2 text-xs text-gray-400">
             Configure connections to see your projects
           </div>
         ) : projects.length > 0 ? (
-          <div className="space-y-1.5">
-            {projects.map((project) => (
-              <label
-                key={project.id}
-                className={`flex items-center gap-2.5 rounded border px-2.5 py-2 text-xs transition-colors cursor-pointer select-none ${
-                  project.is_selected
-                    ? "border-blue-500/70 bg-blue-950/50 text-white font-medium"
-                    : "border-gray-700/80 bg-gray-800/80 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={project.is_selected}
-                  onChange={async () => {
-                    await toggleProjectSelection(project.id);
-                  }}
-                  className="h-4 w-4 rounded accent-blue-500 cursor-pointer"
-                />
-                <span className="truncate flex-1">
-                  {project.name}
-                </span>
-              </label>
-            ))}
-          </div>
+          <ProjectMultiSelect
+            projects={projects}
+            onToggle={toggleProjectSelection}
+          />
         ) : (
           <div className="rounded-lg border border-dashed border-gray-600 bg-gray-800/60 px-3 py-2 text-xs text-gray-400">
             No projects yet

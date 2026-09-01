@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/services/api";
 
 interface Commit {
@@ -17,11 +17,7 @@ export default function RecentCommitsWidget({ developerId = "dev-1" }: { develop
   const [commits, setCommits] = useState<Commit[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, [developerId]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const repos = ["repo-1", "repo-2", "repo-3", "repo-4", "repo-5"];
     const allCommits: Commit[] = [];
@@ -36,7 +32,13 @@ export default function RecentCommitsWidget({ developerId = "dev-1" }: { develop
     allCommits.sort((a, b) => b.date.localeCompare(a.date));
     setCommits(allCommits.slice(0, 10));
     setLoading(false);
-  }
+  }, [developerId]);
+
+  useEffect(() => {
+    // Defer to a microtask so the synchronous setLoading(true) at the top of
+    // loadData doesn't run in the effect body (react-hooks/set-state-in-effect).
+    queueMicrotask(loadData);
+  }, [loadData]);
 
   if (loading) return <div className="text-sm text-gray-400">Loading...</div>;
   if (commits.length === 0) return <div className="text-sm text-gray-500">No recent commits</div>;

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.integration import Integration
-from app.models.project import Project
+from app.models.project import Project, ProjectType
 from app.models.user import User
 from app.routers.auth import get_current_user
 from app.schemas.project import (
@@ -281,6 +281,101 @@ def list_projects(
     db: Session = Depends(get_db),
 ):
     """Return all projects for the current user."""
+    return (
+        db.query(Project)
+        .filter(Project.user_id == current_user.id)
+        .order_by(Project.created_at.desc())
+        .all()
+    )
+
+
+@router.post("/sync", response_model=list[ProjectResponse])
+async def sync_projects(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Import projects that exist in the connected Jira into the local project list.
+
+    Reads the projects from the user's configured Jira integration and creates a
+    local Project row for any that aren't already linked (matched on
+    jira_project_key). Existing projects are left untouched. Returns the full,
+    refreshed project list.
+    """
+    jira = (
+        db.query(Integration)
+        .filter(Integration.user_id == current_user.id, Integration.type == "jira")
+        .first()
+    )
+
+    # Without a Jira connection there's nothing to import; return what we have.
+    existing_projects = (
+        db.query(Project)
+        .filter(Project.user_id == current_user.id)
+        .order_by(Project.created_at.desc())
+        .all()
+    )
+    if jira is None:
+        return existing_projects
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{jira.url.rstrip('/')}/projects",
+                headers={"X-API-Token": jira.token},
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to read projects from Jira: {exc}",
+        )
+
+    jira_projects = payload.get("projects", []) if isinstance(payload, dict) else []
+
+    # Existing links, case-insensitive, so we don't create duplicates.
+    linked_keys = {
+        (p.jira_project_key or "").upper()
+        for p in existing_projects
+        if p.jira_project_key
+    }
+
+    created_any = False
+    for jira_project in jira_projects:
+        jira_id = str(jira_project.get("id") or "").strip()
+        if not jira_id or jira_id.upper() in linked_keys:
+            continue
+
+        name = jira_project.get("name") or jira_id
+        description = jira_project.get("description") or ""
+        space_key = _slugify(name, max_length=8)
+        repo_name = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "project"
+        repo_name = repo_name[:30].rstrip("-")
+
+        project = Project(
+            user_id=current_user.id,
+            name=name,
+            description=description,
+            goal="",
+            project_type=ProjectType.DEVELOPMENT,
+            status=jira_project.get("status") or "active",
+            jira_project_key=jira_id.upper(),
+            confluence_space_key=space_key.upper(),
+            github_repo_name=repo_name,
+            servicenow_service_name=_slugify(name, max_length=15),
+            generate_mock_data=False,
+            is_active=False,
+            # Imported projects are selected by default so they appear in the
+            # dashboard/chat scope immediately.
+            is_selected=True,
+        )
+        db.add(project)
+        linked_keys.add(jira_id.upper())
+        created_any = True
+
+    if created_any:
+        db.commit()
+
     return (
         db.query(Project)
         .filter(Project.user_id == current_user.id)

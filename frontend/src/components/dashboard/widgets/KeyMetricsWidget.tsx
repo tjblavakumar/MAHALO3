@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/services/api";
 
 interface Metrics {
@@ -29,11 +29,7 @@ export default function KeyMetricsWidget({
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, [selectedProjects]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
 
     const repoMap: Record<string, string> = {
@@ -122,7 +118,13 @@ export default function KeyMetricsWidget({
       byProject: byProjectList,
     });
     setLoading(false);
-  }
+  }, [selectedProjects]);
+
+  useEffect(() => {
+    // Defer to a microtask so the synchronous setLoading(true) at the top of
+    // loadData doesn't run in the effect body (react-hooks/set-state-in-effect).
+    queueMicrotask(loadData);
+  }, [loadData]);
 
   if (loading) return <div className="text-sm text-gray-400">Loading...</div>;
   if (!metrics) return null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useProjects } from "@/contexts/ProjectContext";
 import { useRequiredConnections } from "@/hooks/useRequiredConnections";
 import { api } from "@/services/api";
@@ -37,7 +37,7 @@ interface ChatApiResponse {
 }
 
 export default function ChatPage() {
-  const { activeProject } = useProjects();
+  const { activeProject, selectedProjects } = useProjects();
   const { isConfigured, loading: connectionsLoading } = useRequiredConnections();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -52,6 +52,28 @@ export default function ChatPage() {
   }>({ isOpen: false, title: "", content: "", type: "story" });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageIdRef = useRef(0);
+  // Tracks the project scope the current session was started under, so we can
+  // start a fresh session when the sidebar selection changes.
+  const sessionScopeRef = useRef<number | null>(null);
+
+  // Generates a stable, unique message id without calling impure functions
+  // (like Date.now()) during render. The counter lives in a ref and is only
+  // advanced from event handlers.
+  const nextMessageId = useCallback((suffix?: string) => {
+    messageIdRef.current += 1;
+    return suffix ? `msg-${messageIdRef.current}-${suffix}` : `msg-${messageIdRef.current}`;
+  }, []);
+
+  // The chat scope follows the sidebar's project selection. When exactly one
+  // project is selected we scope answers to it; with none or several selected we
+  // fall back to the active project (the backend accepts a single project_id).
+  const scopedProject = useMemo(() => {
+    if (selectedProjects.length === 1) return selectedProjects[0];
+    return activeProject;
+  }, [selectedProjects, activeProject]);
+
+  const scopedProjectId = scopedProject?.id ?? null;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -59,26 +81,32 @@ export default function ChatPage() {
 
   async function handleSend(message: string) {
     const userMsg: Message = {
-      id: `msg-${Date.now()}`,
+      id: nextMessageId(),
       role: "user",
       content: message,
     };
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
+    // If the project scope changed since this session started, begin a fresh
+    // session so the answer is grounded in the current selection.
+    const scopeChanged = sessionScopeRef.current !== scopedProjectId;
+    const effectiveSessionId = scopeChanged ? null : sessionId;
+
     const result = await api.post<ChatApiResponse>("/chat", {
       message,
-      session_id: sessionId,
-      project_id: activeProject?.id ?? null,
+      session_id: effectiveSessionId,
+      project_id: scopedProjectId,
     });
 
     if (result.data) {
-      if (!sessionId) {
+      sessionScopeRef.current = scopedProjectId;
+      if (!effectiveSessionId || result.data.session_id !== sessionId) {
         setSessionId(result.data.session_id);
       }
 
       const assistantMsg: Message = {
-        id: `msg-${Date.now()}-resp`,
+        id: nextMessageId("resp"),
         role: "assistant",
         content: result.data.response,
         systemsQueried: result.data.systems_queried,
@@ -87,7 +115,7 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, assistantMsg]);
     } else {
       const errorMsg: Message = {
-        id: `msg-${Date.now()}-err`,
+        id: nextMessageId("err"),
         role: "assistant",
         content: `Sorry, I encountered an error: ${result.error}`,
       };
@@ -130,11 +158,28 @@ export default function ChatPage() {
     <div className="flex h-screen">
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="border-b border-gray-200 bg-white px-6 py-4">
-          <h1 className="text-lg font-semibold text-gray-900">AI Assistant</h1>
-          <p className="text-sm text-gray-500">
-            Ask about your projects, sprints, documentation, and code
-          </p>
+        <div className="border-b border-gray-200 bg-white px-6 py-4 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-lg font-semibold text-gray-900">AI Assistant</h1>
+            <p className="text-sm text-gray-500">
+              Ask about your projects, sprints, documentation, and code
+            </p>
+          </div>
+          {isConfigured && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-800 whitespace-nowrap self-center">
+              {selectedProjects.length > 1 ? (
+                <span>
+                  Scoped to <strong className="font-semibold">{scopedProject?.name ?? "—"}</strong>
+                  {" "}
+                  <span className="text-blue-400">(of {selectedProjects.length} selected)</span>
+                </span>
+              ) : scopedProject ? (
+                <span>Scoped to <strong className="font-semibold">{scopedProject.name}</strong></span>
+              ) : (
+                <span className="text-gray-500">No project scope</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Messages Area */}

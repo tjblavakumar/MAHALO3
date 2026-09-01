@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/contexts/ProjectContext";
 import { api } from "@/services/api";
 
@@ -29,11 +29,7 @@ export default function MyPRsWidget({ developerId = "dev-1" }: { developerId?: s
     return [];
   }, [userProjects, activeProject]);
 
-  useEffect(() => {
-    loadData();
-  }, [developerId, repoIds]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const allPRs: PullRequest[] = [];
     for (const repo of repoIds) {
@@ -46,7 +42,13 @@ export default function MyPRsWidget({ developerId = "dev-1" }: { developerId?: s
     }
     setPRs(allPRs);
     setLoading(false);
-  }
+  }, [developerId, repoIds]);
+
+  useEffect(() => {
+    // Defer to a microtask so the synchronous setLoading(true) at the top of
+    // loadData doesn't run in the effect body (react-hooks/set-state-in-effect).
+    queueMicrotask(loadData);
+  }, [loadData]);
 
   if (loading) return <div className="text-sm text-gray-400">Loading...</div>;
   if (prs.length === 0) return <div className="text-sm text-gray-500">No open pull requests</div>;

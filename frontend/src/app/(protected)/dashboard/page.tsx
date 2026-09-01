@@ -1,8 +1,11 @@
 "use client";
 
+import { useMemo } from "react";
+import type { Layout } from "react-grid-layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProjects } from "@/contexts/ProjectContext";
 import { useRequiredConnections } from "@/hooks/useRequiredConnections";
+import DashboardGrid, { type DashboardWidget } from "@/components/dashboard/DashboardGrid";
 import SprintBoardWidget from "@/components/dashboard/widgets/SprintBoardWidget";
 import VelocityWidget from "@/components/dashboard/widgets/VelocityWidget";
 import ProjectStatusWidget from "@/components/dashboard/widgets/ProjectStatusWidget";
@@ -20,78 +23,68 @@ const ROLE_LABELS: Record<string, string> = {
   executive: "Executive",
 };
 
-function WidgetCard({ title, children, span = 1 }: { title: string; children: React.ReactNode; span?: number }) {
-  return (
-    <div className={`bg-white rounded-lg shadow border border-gray-100 p-5 ${span === 2 ? "col-span-2" : ""}`}>
-      <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-2 border-b border-gray-100">
-        {title}
-      </h3>
-      {children}
-    </div>
-  );
+interface RoleDashboard {
+  widgets: DashboardWidget[];
+  layout: Layout[];
 }
 
-function ProductManagerDashboard({ selectedProjects }: { selectedProjects: Project[] }) {
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-      <WidgetCard title="Sprint Board" span={2}>
-        <SprintBoardWidget selectedProjects={selectedProjects} />
-      </WidgetCard>
-      <WidgetCard title="Sprint Velocity">
-        <VelocityWidget selectedProjects={selectedProjects} />
-      </WidgetCard>
-      <WidgetCard title="Project Status" span={2}>
-        <ProjectStatusWidget selectedProjects={selectedProjects} />
-      </WidgetCard>
-      <WidgetCard title="Key Metrics">
-        <KeyMetricsWidget selectedProjects={selectedProjects} />
-      </WidgetCard>
-    </div>
-  );
-}
+function buildRoleDashboard(role: string | undefined, selectedProjects: Project[]): RoleDashboard {
+  if (role === "product_manager") {
+    return {
+      widgets: [
+        { id: "sprint-board", title: "Sprint Board", content: <SprintBoardWidget selectedProjects={selectedProjects} /> },
+        { id: "velocity", title: "Sprint Velocity", content: <VelocityWidget selectedProjects={selectedProjects} /> },
+        { id: "project-status", title: "Project Status", content: <ProjectStatusWidget selectedProjects={selectedProjects} /> },
+        { id: "key-metrics", title: "Key Metrics", content: <KeyMetricsWidget selectedProjects={selectedProjects} /> },
+      ],
+      layout: [
+        { i: "sprint-board", x: 0, y: 0, w: 8, h: 4, minW: 4, minH: 3 },
+        { i: "velocity", x: 8, y: 0, w: 4, h: 4, minW: 3, minH: 3 },
+        { i: "project-status", x: 0, y: 4, w: 8, h: 4, minW: 4, minH: 3 },
+        { i: "key-metrics", x: 8, y: 4, w: 4, h: 4, minW: 3, minH: 3 },
+      ],
+    };
+  }
 
-function ExecutiveDashboard({ selectedProjects }: { selectedProjects: Project[] }) {
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-      <WidgetCard title="Portfolio Health">
-        <PortfolioWidget selectedProjects={selectedProjects} />
-      </WidgetCard>
-      <WidgetCard title="Key Metrics">
-        <KeyMetricsWidget selectedProjects={selectedProjects} />
-      </WidgetCard>
-      <WidgetCard title="Sprint Velocity">
-        <VelocityWidget selectedProjects={selectedProjects} />
-      </WidgetCard>
-      <WidgetCard title="Project Completion" span={2}>
-        <ProjectStatusWidget selectedProjects={selectedProjects} />
-      </WidgetCard>
-      <WidgetCard title="Sprint Board Overview" span={2}>
-        <SprintBoardWidget selectedProjects={selectedProjects} />
-      </WidgetCard>
-    </div>
-  );
-}
+  if (role === "executive") {
+    return {
+      widgets: [
+        { id: "portfolio", title: "Portfolio Health", content: <PortfolioWidget selectedProjects={selectedProjects} /> },
+        { id: "key-metrics", title: "Key Metrics", content: <KeyMetricsWidget selectedProjects={selectedProjects} /> },
+        { id: "velocity", title: "Sprint Velocity", content: <VelocityWidget selectedProjects={selectedProjects} /> },
+        { id: "project-status", title: "Project Completion", content: <ProjectStatusWidget selectedProjects={selectedProjects} /> },
+        { id: "sprint-board", title: "Sprint Board Overview", content: <SprintBoardWidget selectedProjects={selectedProjects} /> },
+      ],
+      layout: [
+        { i: "portfolio", x: 0, y: 0, w: 4, h: 4, minW: 3, minH: 3 },
+        { i: "key-metrics", x: 4, y: 0, w: 4, h: 4, minW: 3, minH: 3 },
+        { i: "velocity", x: 8, y: 0, w: 4, h: 4, minW: 3, minH: 3 },
+        { i: "project-status", x: 0, y: 4, w: 8, h: 4, minW: 4, minH: 3 },
+        { i: "sprint-board", x: 0, y: 8, w: 8, h: 4, minW: 4, minH: 3 },
+      ],
+    };
+  }
 
-function DeveloperDashboard({ selectedProjects }: { selectedProjects: Project[] }) {
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-      <WidgetCard title="My Stories">
-        <MyStoriesWidget developerId="dev-1" />
-      </WidgetCard>
-      <WidgetCard title="My Pull Requests">
-        <MyPRsWidget developerId="dev-1" />
-      </WidgetCard>
-      <WidgetCard title="Recent Commits">
-        <RecentCommitsWidget developerId="dev-1" />
-      </WidgetCard>
-      <WidgetCard title="Sprint Board" span={2}>
-        <SprintBoardWidget selectedProjects={selectedProjects} />
-      </WidgetCard>
-      <WidgetCard title="Sprint Velocity">
-        <VelocityWidget selectedProjects={selectedProjects} />
-      </WidgetCard>
-    </div>
-  );
+  if (role === "developer") {
+    return {
+      widgets: [
+        { id: "my-stories", title: "My Stories", content: <MyStoriesWidget developerId="dev-1" /> },
+        { id: "my-prs", title: "My Pull Requests", content: <MyPRsWidget developerId="dev-1" /> },
+        { id: "recent-commits", title: "Recent Commits", content: <RecentCommitsWidget developerId="dev-1" /> },
+        { id: "sprint-board", title: "Sprint Board", content: <SprintBoardWidget selectedProjects={selectedProjects} /> },
+        { id: "velocity", title: "Sprint Velocity", content: <VelocityWidget selectedProjects={selectedProjects} /> },
+      ],
+      layout: [
+        { i: "my-stories", x: 0, y: 0, w: 4, h: 4, minW: 3, minH: 3 },
+        { i: "my-prs", x: 4, y: 0, w: 4, h: 4, minW: 3, minH: 3 },
+        { i: "recent-commits", x: 8, y: 0, w: 4, h: 4, minW: 3, minH: 3 },
+        { i: "sprint-board", x: 0, y: 4, w: 8, h: 4, minW: 4, minH: 3 },
+        { i: "velocity", x: 8, y: 4, w: 4, h: 4, minW: 3, minH: 3 },
+      ],
+    };
+  }
+
+  return { widgets: [], layout: [] };
 }
 
 export default function DashboardPage() {
@@ -99,7 +92,38 @@ export default function DashboardPage() {
   const { selectedProjects, loading: projectsLoading } = useProjects();
   const { isConfigured, loading: connectionsLoading } = useRequiredConnections();
 
-  if (!connectionsLoading && !isConfigured) {
+  const { widgets, layout } = useMemo(
+    () => buildRoleDashboard(user?.role, selectedProjects),
+    [user?.role, selectedProjects]
+  );
+
+  // Data is still settling until both connections and projects have loaded.
+  // We hold back the project banner and widgets until then so transient states
+  // like "No projects selected (showing all)" never flash during load.
+  const isInitializing = connectionsLoading || projectsLoading;
+
+  if (isInitializing) {
+    return (
+      <div className="p-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600 mt-1">
+            Welcome back, {user?.name}!{" "}
+            <span className="text-blue-600 font-medium">
+              {user ? ROLE_LABELS[user.role] || user.role : ""}
+            </span>{" "}
+            view
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-gray-500">
+          <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+          <span>Loading your dashboard...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isConfigured) {
     return (
       <div className="p-8">
         <div className="mb-8">
@@ -141,26 +165,28 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {!projectsLoading && (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-            {selectedProjects.length === 0 ? (
-              <span className="text-gray-500">No projects selected (showing all)</span>
-            ) : selectedProjects.length === 1 ? (
-              <span>Project: <strong className="font-semibold">{selectedProjects[0].name}</strong></span>
-            ) : (
-              <span>Aggregating <strong className="font-semibold">{selectedProjects.length}</strong> selected projects</span>
-            )}
-          </div>
-        )}
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          {selectedProjects.length === 0 ? (
+            <span className="text-gray-500">No projects selected (showing all)</span>
+          ) : selectedProjects.length === 1 ? (
+            <span>Project: <strong className="font-semibold">{selectedProjects[0].name}</strong></span>
+          ) : (
+            <span>Aggregating <strong className="font-semibold">{selectedProjects.length}</strong> selected projects</span>
+          )}
+        </div>
       </div>
 
-      {user?.role === "product_manager" && <ProductManagerDashboard selectedProjects={selectedProjects} />}
-      {user?.role === "executive" && <ExecutiveDashboard selectedProjects={selectedProjects} />}
-      {user?.role === "developer" && <DeveloperDashboard selectedProjects={selectedProjects} />}
-
-      {!user?.role && (
+      {widgets.length > 0 ? (
+        <DashboardGrid
+          widgets={widgets}
+          defaultLayout={layout}
+          storageKey={`${user?.id ?? "anon"}:${user?.role ?? "none"}`}
+        />
+      ) : (
         <div className="bg-white rounded-lg shadow p-12 text-center">
-          <p className="text-gray-500">Loading dashboard...</p>
+          <p className="text-gray-500">
+            {user?.role ? "No widgets available for your role." : "Loading dashboard..."}
+          </p>
         </div>
       )}
     </div>

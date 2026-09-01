@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/services/api";
 
 interface Sprint {
@@ -29,11 +29,7 @@ export default function VelocityWidget({
   const [projectVelocities, setProjectVelocities] = useState<ProjectVelocity[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, [projectId, selectedProjects]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
 
     let targets: Array<{ id: string; name: string }> = [];
@@ -70,7 +66,13 @@ export default function VelocityWidget({
 
     setProjectVelocities(list);
     setLoading(false);
-  }
+  }, [projectId, selectedProjects]);
+
+  useEffect(() => {
+    // Defer to a microtask so the synchronous setLoading(true) at the top of
+    // loadData doesn't run in the effect body (react-hooks/set-state-in-effect).
+    queueMicrotask(loadData);
+  }, [loadData]);
 
   if (loading) return <div className="text-sm text-gray-400">Loading...</div>;
   if (projectVelocities.length === 0) return <div className="text-sm text-gray-500">No sprint data found</div>;

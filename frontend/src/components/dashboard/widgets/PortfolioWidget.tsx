@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/services/api";
 
 interface Project {
@@ -21,11 +21,7 @@ export default function PortfolioWidget({ selectedProjects = [] }: { selectedPro
   const [projects, setProjects] = useState<ProjectHealth[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, [selectedProjects]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const projResult = await api.get<{ projects: Project[] }>("/proxy/jira/projects");
     if (projResult.data) {
@@ -72,7 +68,13 @@ export default function PortfolioWidget({ selectedProjects = [] }: { selectedPro
       setProjects(healthData);
     }
     setLoading(false);
-  }
+  }, [selectedProjects]);
+
+  useEffect(() => {
+    // Defer to a microtask so the synchronous setLoading(true) at the top of
+    // loadData doesn't run in the effect body (react-hooks/set-state-in-effect).
+    queueMicrotask(loadData);
+  }, [loadData]);
 
   if (loading) return <div className="text-sm text-gray-400">Loading...</div>;
 

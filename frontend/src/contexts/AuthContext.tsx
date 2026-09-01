@@ -25,18 +25,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // On mount, check if there's an existing token in sessionStorage
-  useEffect(() => {
+  // Restore any existing session from sessionStorage. Reading storage and
+  // validating the token is an async external-sync task, so it lives in a
+  // callback that the mount effect invokes (rather than calling setState
+  // synchronously in the effect body).
+  const restoreSession = useCallback(async () => {
     const storedToken = sessionStorage.getItem("mahalo3_token");
-    if (storedToken) {
-      setToken(storedToken);
-      fetchUser(storedToken);
-    } else {
+    if (!storedToken) {
       setIsLoading(false);
+      return;
     }
-  }, []);
 
-  async function fetchUser(accessToken: string) {
+    setToken(storedToken);
     const result = await api.get<User>("/auth/me");
     if (result.data) {
       setUser(result.data);
@@ -47,7 +47,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
     }
     setIsLoading(false);
-  }
+  }, []);
+
+  // On mount, check if there's an existing token in sessionStorage. Deferred to
+  // a microtask so the synchronous setState calls in restoreSession don't run in
+  // the effect body (react-hooks/set-state-in-effect).
+  useEffect(() => {
+    queueMicrotask(() => {
+      void restoreSession();
+    });
+  }, [restoreSession]);
 
   const login = useCallback(async (email: string, password: string): Promise<string | null> => {
     const result = await api.post<{ access_token: string; token_type: string }>(

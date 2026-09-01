@@ -5,7 +5,6 @@ import Link from "next/link";
 import { api } from "@/services/api";
 import { useProjects } from "@/contexts/ProjectContext";
 import { useRequiredConnections } from "@/hooks/useRequiredConnections";
-import ViewDataModal from "@/components/connections/ViewDataModal";
 import type { Integration, Project, ProjectProposal } from "@/types";
 
 interface TestResult {
@@ -35,7 +34,6 @@ export default function ConnectionsPage() {
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [testResults, setTestResults] = useState<Record<number, TestResult>>({});
   const [testingId, setTestingId] = useState<number | null>(null);
-  const [viewData, setViewData] = useState<Integration | null>(null);
   const [projectProposal, setProjectProposal] = useState<ProjectProposal | null>(null);
   const [projectFormError, setProjectFormError] = useState<string | null>(null);
   const [projectSubmitting, setProjectSubmitting] = useState(false);
@@ -164,7 +162,7 @@ export default function ConnectionsPage() {
       setProjectGoal("");
       setProjectType("development");
       setGenerateMockData(true);
-      await loadProjects();
+      await refreshProjects();
     }
     setProjectSubmitting(false);
   }
@@ -622,12 +620,12 @@ export default function ConnectionsPage() {
                   >
                     {testingId === integration.id ? "Testing..." : "Test"}
                   </button>
-                  <button
-                    onClick={() => setViewData(integration)}
+                  <Link
+                    href={`/connections/${integration.id}/data`}
                     className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-xs font-medium"
                   >
                     View data
-                  </button>
+                  </Link>
                   <button
                     onClick={() => handleDelete(integration.id)}
                     className="px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors text-xs font-medium"
@@ -641,13 +639,6 @@ export default function ConnectionsPage() {
         </div>
       )}
 
-      {viewData && (
-        <ViewDataModal
-          type={viewData.type}
-          name={viewData.name}
-          onClose={() => setViewData(null)}
-        />
-      )}
     </div>
   );
 }
