@@ -64,6 +64,8 @@ def synthesize_response(
             f"IMPORTANT: Do NOT call any tools, do not output any tool calling markup (such as <｜｜DSML... or <tool_call>), "
             f"and do not search for new data. Use only the provided information.\n"
             f"Preserve all facts, project keys, IDs, numbers, and links exactly; do not invent new data.\n\n"
+            f"For grouped deployment or project summaries, use clear Markdown headings and bullet lists instead of tables. "
+            f"Keep each bullet and heading on its own line; never collapse multiple rows or bullets onto one line.\n\n"
             f"User question: {user_message}\n\n"
             f"Answer to refine:\n{cleaned_input}"
         )

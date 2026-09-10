@@ -74,6 +74,56 @@ def create_servicenow_tools(servicenow_url: str, servicenow_token: str):
         return output
 
     @tool
+    def servicenow_deployment_status_by_project() -> str:
+        """Summarize deployment statuses grouped by every ServiceNow project/service."""
+        services_data = _make_servicenow_request(
+            servicenow_url,
+            servicenow_token,
+            endpoint="/services",
+        )
+        deployments_data = _make_servicenow_request(
+            servicenow_url,
+            servicenow_token,
+            endpoint="/deployments",
+        )
+        if "error" in services_data:
+            return f"Error: {services_data['error']}"
+        if "error" in deployments_data:
+            return f"Error: {deployments_data['error']}"
+
+        services = services_data.get("services", [])
+        deployments = deployments_data.get("deployments", [])
+        if not deployments:
+            return "No deployment records found in ServiceNow."
+
+        service_by_id = {service["id"]: service for service in services}
+        grouped: dict[str, list[dict]] = {}
+        for deployment in deployments:
+            grouped.setdefault(deployment.get("service", "unknown"), []).append(deployment)
+
+        output = f"Deployment status by project (ServiceNow, {len(deployments)} total):\n"
+        for service_id, records in grouped.items():
+            service = service_by_id.get(service_id, {})
+            project_id = service.get("project_id", "unmapped")
+            project_name = service.get("name", service_id)
+            by_status: dict[str, int] = {}
+            for record in records:
+                status = record.get("status", "unknown")
+                by_status[status] = by_status.get(status, 0) + 1
+            statuses = ", ".join(
+                f"{status}: {count}" for status, count in sorted(by_status.items())
+            )
+            latest = max(records, key=lambda record: record.get("deployed_at", ""))
+            output += (
+                f"\n- {project_id} / {project_name} ({service_id}): {len(records)} deployments\n"
+                f"  Status counts: {statuses}\n"
+                f"  Latest: {latest.get('id', 'unknown')} {latest.get('version', '')} "
+                f"({latest.get('status', 'unknown')}, {latest.get('environment', 'unknown')}, "
+                f"{latest.get('deployed_at', 'unknown')})\n"
+            )
+        return output
+
+    @tool
     def servicenow_list_incidents(
         severity: Optional[str] = None,
         status: Optional[str] = None,
@@ -184,6 +234,7 @@ def create_servicenow_tools(servicenow_url: str, servicenow_token: str):
 
     return [
         servicenow_list_deployments,
+        servicenow_deployment_status_by_project,
         servicenow_list_incidents,
         servicenow_get_incident,
         servicenow_get_stats,

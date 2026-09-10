@@ -153,3 +153,200 @@ INCIDENTS = [
         "description": "Minor rounding discrepancy for JPY carts. Low impact.",
     },
 ]
+
+
+_SERVICE_CONTEXT = {
+    "payment-service": {
+        "project": "PAY",
+        "component": "payment authorization and refund flows",
+        "release_topics": [
+            "3DS challenge handling",
+            "wallet tokenization",
+            "refund reconciliation",
+            "payment provider retries",
+            "webhook signature validation",
+            "settlement reporting",
+            "card vault rotation",
+            "fraud decision caching",
+            "capture idempotency",
+        ],
+        "incident_topics": [
+            "authorization timeouts",
+            "duplicate webhook delivery",
+            "refund reconciliation lag",
+            "3DS challenge failures",
+            "wallet token refresh errors",
+            "provider response spikes",
+            "settlement export delays",
+            "card vault connectivity",
+            "capture retry exhaustion",
+        ],
+        "assignee": "dev-1",
+    },
+    "cart-service": {
+        "project": "CART",
+        "component": "cart pricing and checkout calculations",
+        "release_topics": [
+            "promotional pricing rules",
+            "cart reservation expiry",
+            "tax calculation caching",
+            "multi-currency rounding",
+            "guest cart merge",
+            "checkout item validation",
+            "shipping estimate refresh",
+            "bundle discount calculation",
+            "cart persistence failover",
+        ],
+        "incident_topics": [
+            "stale cart totals",
+            "coupon validation errors",
+            "guest cart merge failures",
+            "tax calculation timeouts",
+            "reservation expiry mismatches",
+            "shipping estimate drift",
+            "bundle discount regressions",
+            "checkout validation failures",
+            "cart persistence errors",
+        ],
+        "assignee": "dev-2",
+    },
+    "auth-service": {
+        "project": "AUTH",
+        "component": "identity, login, and access management",
+        "release_topics": [
+            "SSO session renewal",
+            "TOTP enrollment",
+            "password reset throttling",
+            "OAuth callback validation",
+            "login risk scoring",
+            "device trust registration",
+            "SMS fallback routing",
+            "service account rotation",
+            "session revocation propagation",
+        ],
+        "incident_topics": [
+            "login latency",
+            "SSO callback failures",
+            "password reset delivery",
+            "TOTP enrollment errors",
+            "session revocation lag",
+            "OAuth token validation",
+            "SMS fallback delivery",
+            "device trust mismatches",
+            "service account authentication",
+        ],
+        "assignee": "dev-3",
+    },
+    "product-service": {
+        "project": "PROD",
+        "component": "catalog search, recommendations, and inventory",
+        "release_topics": [
+            "catalog search indexing",
+            "recommendation ranking",
+            "inventory reservation sync",
+            "category navigation",
+            "product image delivery",
+            "attribute filtering",
+            "bulk catalog imports",
+            "price freshness checks",
+            "search synonym updates",
+        ],
+        "incident_topics": [
+            "catalog search 500s",
+            "stale inventory counts",
+            "recommendation latency",
+            "missing product images",
+            "category navigation errors",
+            "attribute filter mismatches",
+            "catalog import failures",
+            "stale product prices",
+            "search index lag",
+        ],
+        "assignee": "dev-4",
+    },
+    "order-service": {
+        "project": "ORD",
+        "component": "order processing, fulfillment, and returns",
+        "release_topics": [
+            "split shipment orchestration",
+            "fulfillment status webhooks",
+            "return authorization rules",
+            "order event replay",
+            "carrier tracking sync",
+            "partial cancellation handling",
+            "warehouse allocation",
+            "order confirmation delivery",
+            "backorder state transitions",
+        ],
+        "incident_topics": [
+            "fulfillment status lag",
+            "order event duplication",
+            "return authorization failures",
+            "carrier tracking delays",
+            "partial cancellation errors",
+            "warehouse allocation timeouts",
+            "order confirmation delivery",
+            "backorder state mismatches",
+            "split shipment failures",
+        ],
+        "assignee": "dev-5",
+    },
+}
+
+
+def _expand_service_records() -> None:
+    """Guarantee a useful baseline of correlated records for every project."""
+    deployment_number = max(int(item["id"].split("-")[1]) for item in DEPLOYMENTS)
+    incident_number = max(int(item["id"].split("-")[1]) for item in INCIDENTS)
+    deployments_by_service = {service["id"]: [] for service in SERVICES}
+    for deployment in DEPLOYMENTS:
+        deployments_by_service.setdefault(deployment["service"], []).append(deployment)
+
+    for service in SERVICES:
+        service_id = service["id"]
+        context = _SERVICE_CONTEXT[service_id]
+        existing_deployments = deployments_by_service[service_id]
+        while len(existing_deployments) < 10:
+            index = len(existing_deployments)
+            deployment_number += 1
+            status = ("failed", "rolled_back", "in_progress", "success")[index % 4]
+            environment = "staging" if index % 3 == 0 else "production"
+            deployment = {
+                "id": f"DEP-{deployment_number}",
+                "service": service_id,
+                "environment": environment,
+                "version": f"v{index + 1}.2.{index}",
+                "status": status,
+                "deployed_by": context["assignee"],
+                "deployed_at": f"2026-08-{23 - index:02d}T{10 + index:02d}:00:00Z",
+                "duration_seconds": 110 + index * 17,
+                "linked_story": f"{context['project']}-{600 + index}",
+                "linked_pr": 150 + deployment_number - 1007,
+                "notes": f"{context['release_topics'][index - 1]} release for {context['component']}.",
+            }
+            DEPLOYMENTS.append(deployment)
+            existing_deployments.append(deployment)
+
+        existing_incidents = [item for item in INCIDENTS if item["affected_service"] == service_id]
+        while len(existing_incidents) < 10:
+            index = len(existing_incidents)
+            incident_number += 1
+            status = ("resolved", "investigating", "open")[index % 3]
+            linked_deployment = existing_deployments[index % len(existing_deployments)]
+            incident = {
+                "id": f"INC-{incident_number}",
+                "title": f"{context['incident_topics'][index - 1].capitalize()} affecting {context['project']}",
+                "severity": ("P2", "P3", "P4", "P1")[index % 4],
+                "status": status,
+                "affected_service": service_id,
+                "assignee": context["assignee"],
+                "opened_at": f"2026-08-{22 - index:02d}T{8 + index:02d}:15:00Z",
+                "resolved_at": f"2026-08-{22 - index:02d}T{12 + index:02d}:00:00Z" if status == "resolved" else None,
+                "linked_deployment": linked_deployment["id"],
+                "description": f"Monitoring detected {context['incident_topics'][index - 1]} in the {context['component']}.",
+            }
+            INCIDENTS.append(incident)
+            existing_incidents.append(incident)
+
+
+_expand_service_records()

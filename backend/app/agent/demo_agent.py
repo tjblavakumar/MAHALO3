@@ -131,7 +131,10 @@ async def demo_chat(
                 tool_results.append(result)
 
     # Status/overview questions -> query Jira board + GitHub PRs
-    elif any(kw in msg_lower for kw in ["status", "overview", "progress", "how is", "what's happening"]):
+    elif (
+        any(kw in msg_lower for kw in ["status", "overview", "progress", "how is", "what's happening"])
+        and not any(kw in msg_lower for kw in ["deploy", "deployment", "servicenow"])
+    ):
         # Determine project
         project_id = _detect_project(msg_lower, project_context)
 
@@ -225,11 +228,18 @@ async def demo_chat(
                         kwargs["service"] = service
                     tool_results.append(inc_tool.invoke(kwargs))
             else:
-                dep_tool = next((t for t in tools_map["servicenow"] if t.name == "servicenow_list_deployments"), None)
+                grouped_request = any(
+                    phrase in msg_lower
+                    for phrase in ["per project", "by project", "each project", "all projects"]
+                )
+                preferred_tool = (
+                    "servicenow_deployment_status_by_project"
+                    if grouped_request
+                    else "servicenow_list_deployments"
+                )
+                dep_tool = next((t for t in tools_map["servicenow"] if t.name == preferred_tool), None)
                 if dep_tool:
-                    kwargs = {}
-                    if service:
-                        kwargs["service"] = service
+                    kwargs = {} if grouped_request else ({"service": service} if service else {})
                     tool_results.append(dep_tool.invoke(kwargs))
 
     # Documentation/security/architecture questions -> Confluence
