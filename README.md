@@ -157,6 +157,7 @@ Each mock service directory contains:
 - **Read**: Auto-queries Jira, Confluence, GitHub, and ServiceNow and presents correlated results
 - **Write**: Proposes actions (create/update story, create branch, open incident) for user approval via interactive proposal cards
 - **Multi-system & Multi-project**: A single prompt can search, compare, and correlate across all connected systems and user projects (e.g. *"what is common between project A and project B"*)
+- **Dynamic starter prompts**: The chat empty-state shows context-aware suggestions instead of a fixed list. They're derived from the user's role, the scoped project (real names/keys injected), and which systems are actually connected (e.g. no GitHub → no PR prompts), and recompute whenever that context changes. A **"Generate more"** button fetches fresh LLM-written suggestions on demand (`POST /chat/suggestions`), with a deterministic fallback when no LLM key is configured
 - **Robust Tool Invocation & Sanitization**: Handles structured function calling and parses/cleans raw LLM tool call tokens (such as DSML/XML tags) for seamless user-facing responses
 - **Name resolution**: Resolves people by name (e.g. "Raj", "assigned to me") to the right account before filtering
 

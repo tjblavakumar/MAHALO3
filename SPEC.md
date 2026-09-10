@@ -111,6 +111,25 @@ All integrations connect via API tokens. For the PoC, mock services simulate rea
    - On approval: execute and show result
    - On rejection: acknowledge and offer alternatives
 
+## Chat Starter Prompts (Dynamic Suggestions)
+
+The chat empty-state presents suggested starter prompts that adapt to context rather than a
+fixed hardcoded list.
+
+- **Drivers**: the user's role (`product_manager` / `developer` / `executive`), the scoped
+  project (its real name and system keys are injected into templates), and the set of
+  connected integrations (Jira / Confluence / GitHub / ServiceNow).
+- **Filtering**: suggestions that reference a system the user hasn't connected are hidden
+  (e.g. no GitHub connection → no pull-request prompts); project-referencing prompts are
+  skipped when no project is scoped or a required key is missing.
+- **Recompute-from-context**: the default (template) suggestions are deterministic and
+  recompute whenever role, scoped project, or connections change — no random rotation.
+- **Hybrid generation**: a **"Generate more"** action calls `POST /chat/suggestions`, which
+  reuses the agent's role prompt, integrations context, and project context to have the LLM
+  write fresh, grounded suggestions. When no OpenAI key is configured (or generation fails),
+  the endpoint returns a deterministic, connection-aware fallback set. LLM output is tied to
+  the current context and reverts to templates when that context changes.
+
 ## File Structure
 
 ```
