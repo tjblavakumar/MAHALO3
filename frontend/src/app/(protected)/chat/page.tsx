@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { useProjects } from "@/contexts/ProjectContext";
+import { useConnections } from "@/contexts/ConnectionsContext";
 import { useRequiredConnections } from "@/hooks/useRequiredConnections";
+import { buildSuggestions, type IntegrationType } from "@/lib/chatSuggestions";
 import { api } from "@/services/api";
 import ChatInput from "@/components/chat/ChatInput";
 import ChatMessage from "@/components/chat/ChatMessage";
@@ -37,13 +40,21 @@ interface ChatApiResponse {
 }
 
 export default function ChatPage() {
+  const { user } = useAuth();
   const { activeProject, selectedProjects } = useProjects();
+  const { integrations } = useConnections();
   const { isConfigured, loading: connectionsLoading } = useRequiredConnections();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [actionResults, setActionResults] = useState<Record<string, ActionResult>>({});
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  // Optional LLM-generated suggestions from "Generate more". Tagged with the
+  // context signature they were generated for, so they're automatically
+  // discarded when the role/project/connections change (requirement: recompute
+  // from current context).
+  const [llmSuggestions, setLlmSuggestions] = useState<{ signature: string; items: string[] } | null>(null);
+  const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
   const [contextPanel, setContextPanel] = useState<{
     isOpen: boolean;
     title: string;
@@ -75,9 +86,58 @@ export default function ChatPage() {
 
   const scopedProjectId = scopedProject?.id ?? null;
 
+  // The connection types the user has actually configured. Drives which
+  // suggestions we surface (e.g. no GitHub -> no PR prompts).
+  const connectedTypes = useMemo<IntegrationType[]>(
+    () => integrations.map((i) => i.type),
+    [integrations]
+  );
+
+  // Template-derived, context-aware starter prompts. Recomputes whenever the
+  // role, scoped project, or connected systems change (no random rotation).
+  const templateSuggestions = useMemo(
+    () =>
+      buildSuggestions({
+        role: user?.role,
+        project: scopedProject,
+        connectedTypes,
+      }),
+    [user?.role, scopedProject, connectedTypes]
+  );
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // A stable signature of the current suggestion context. When it changes, any
+  // previously generated LLM suggestions no longer apply and we fall back to
+  // the freshly recomputed template set.
+  const suggestionSignature = useMemo(
+    () => `${user?.role ?? "none"}:${scopedProjectId ?? "none"}:${connectedTypes.slice().sort().join(",")}`,
+    [user?.role, scopedProjectId, connectedTypes]
+  );
+
+  // What we actually render: the LLM set when it matches the current context,
+  // otherwise the template-derived set. No effect / setState mirroring needed.
+  const displayedSuggestions = useMemo(
+    () =>
+      llmSuggestions && llmSuggestions.signature === suggestionSignature
+        ? llmSuggestions.items
+        : templateSuggestions,
+    [llmSuggestions, suggestionSignature, templateSuggestions]
+  );
+
+  async function handleGenerateSuggestions() {
+    setGeneratingSuggestions(true);
+    const result = await api.post<{ suggestions: string[] }>("/chat/suggestions", {
+      project_id: scopedProjectId,
+    });
+    if (result.data && result.data.suggestions.length > 0) {
+      setLlmSuggestions({ signature: suggestionSignature, items: result.data.suggestions });
+    }
+    // On error or empty response we silently keep the current (template) set.
+    setGeneratingSuggestions(false);
+  }
 
   async function handleSend(message: string) {
     const userMsg: Message = {
@@ -206,22 +266,35 @@ export default function ChatPage() {
               <h2 className="text-lg font-medium text-gray-700 mb-2">
                 How can I help you today?
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-lg mx-auto mt-6">
-                {[
-                  "What is the status of the payment gateway?",
-                  "Show me the current sprint board for CART",
-                  "What are our PCI compliance requirements?",
-                  "Show open pull requests for the auth service",
-                ].map((suggestion) => (
+              {displayedSuggestions.length > 0 && (
+                <div className="max-w-lg mx-auto mt-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {displayedSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        onClick={() => handleSend(suggestion)}
+                        className="text-left px-4 py-3 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
                   <button
-                    key={suggestion}
-                    onClick={() => handleSend(suggestion)}
-                    className="text-left px-4 py-3 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                    onClick={handleGenerateSuggestions}
+                    disabled={generatingSuggestions}
+                    className="mt-4 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    {suggestion}
+                    {generatingSuggestions ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                        Generating…
+                      </>
+                    ) : (
+                      <>✨ Generate more</>
+                    )}
                   </button>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
           )}
 

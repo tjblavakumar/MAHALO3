@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.agent.agent import chat, execute_proposed_action
+from app.agent.agent import chat, execute_proposed_action, generate_suggestions
 from app.agent.session import get_session
 from app.core.config import settings
 
@@ -51,6 +51,18 @@ class ActionResult(BaseModel):
 
     success: bool
     message: str
+
+
+class SuggestionsRequest(BaseModel):
+    """Request body for generating starter-prompt suggestions."""
+
+    project_id: Optional[int] = None
+
+
+class SuggestionsResponse(BaseModel):
+    """Context-aware starter prompts for the chat empty-state."""
+
+    suggestions: list[str] = []
 
 
 @router.post("", response_model=ChatResponse)
@@ -109,6 +121,43 @@ async def send_message(
             status_code=500,
             detail=f"Agent error: {str(e)}",
         )
+
+
+@router.post("/suggestions", response_model=SuggestionsResponse)
+async def suggest_prompts(
+    request: SuggestionsRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generate short, context-aware starter prompts for the current user.
+
+    Grounded in the user's role, connected systems, and scoped project. Falls
+    back to a deterministic list when the LLM is unavailable.
+    """
+    active_project = None
+    if request.project_id is not None:
+        active_project = (
+            db.query(Project)
+            .filter(Project.id == request.project_id, Project.user_id == current_user.id)
+            .first()
+        )
+    if active_project is None:
+        active_project = (
+            db.query(Project)
+            .filter(Project.user_id == current_user.id, Project.is_active.is_(True))
+            .first()
+        )
+
+    try:
+        suggestions = await generate_suggestions(
+            user=current_user,
+            db=db,
+            project=active_project,
+        )
+        return SuggestionsResponse(suggestions=suggestions)
+    except Exception as e:
+        logger.exception("Suggestion generation error")
+        raise HTTPException(status_code=500, detail=f"Suggestion error: {str(e)}")
 
 
 @router.post("/approve", response_model=ActionResult)

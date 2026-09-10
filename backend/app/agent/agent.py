@@ -329,3 +329,128 @@ async def chat(
         "systems_queried": list(systems_queried),
         "session_id": session_id,
     }
+
+
+# --- Starter-prompt suggestions -------------------------------------------
+
+# Deterministic, connection-aware fallback suggestions per role. Used when no
+# OpenAI key is configured, or when LLM generation fails/returns nothing. Each
+# entry is (text, required_integration_type_or_None).
+_FALLBACK_SUGGESTIONS: dict[str, list[tuple[str, Optional[str]]]] = {
+    "product_manager": [
+        ("What is the current sprint status?", "jira"),
+        ("Summarize open blockers", "jira"),
+        ("Summarize the latest documentation updates", "confluence"),
+        ("Are there any active production incidents?", "servicenow"),
+        ("Give me a delivery status overview", None),
+    ],
+    "developer": [
+        ("Show my open pull requests", "github"),
+        ("What issues are assigned to me?", "jira"),
+        ("Any recent failed deployments?", "servicenow"),
+        ("Find the technical docs for my project", "confluence"),
+        ("What changed in the latest release?", "github"),
+    ],
+    "executive": [
+        ("Give me a high-level delivery status", None),
+        ("What are the top risks and blockers right now?", "jira"),
+        ("Any active production incidents?", "servicenow"),
+        ("How is the team performing this quarter?", "jira"),
+    ],
+}
+
+
+def _fallback_suggestions(
+    role: str, integrations: list[Integration], limit: int = 4
+) -> list[str]:
+    """Build role/connection-aware suggestions without calling the LLM."""
+    connected = {i.type.value for i in integrations}
+    entries = _FALLBACK_SUGGESTIONS.get(role, _FALLBACK_SUGGESTIONS["developer"])
+    out: list[str] = []
+    for text, required in entries:
+        if len(out) >= limit:
+            break
+        if required is not None and required not in connected:
+            continue
+        out.append(text)
+    if not out:
+        out = ["What can you help me with?", "Give me a status overview of my projects"]
+    return out[:limit]
+
+
+def _parse_suggestion_lines(raw: str, limit: int) -> list[str]:
+    """Parse the LLM output into a clean list of short suggestion strings."""
+    suggestions: list[str] = []
+    for line in raw.splitlines():
+        cleaned = line.strip()
+        if not cleaned:
+            continue
+        # Strip common list markers: "1.", "-", "*", "•", quotes.
+        cleaned = cleaned.lstrip("-*•0123456789. )\t").strip()
+        cleaned = cleaned.strip('"').strip("'").strip()
+        if not cleaned:
+            continue
+        suggestions.append(cleaned)
+        if len(suggestions) >= limit:
+            break
+    return suggestions
+
+
+async def generate_suggestions(
+    user: User,
+    db: Session,
+    project: Optional[Project] = None,
+    limit: int = 4,
+) -> list[str]:
+    """Generate short, context-aware chat starter prompts for the user.
+
+    Reuses the same role prompt, integrations context, and project context the
+    chat agent uses so the suggestions reflect the user's actual connected
+    systems and scoped project. Falls back to a deterministic list when no
+    OpenAI key is configured or generation fails.
+    """
+    integrations = _get_user_integrations(user.id, db)
+
+    # No key configured -> deterministic fallback (mirrors the demo agent path).
+    if not settings.openai_api_key:
+        return _fallback_suggestions(user.role.value, integrations, limit)
+
+    role_prompt = ROLE_PROMPTS.get(user.role.value, ROLE_PROMPTS["developer"])
+    integrations_context = _build_integrations_context(integrations)
+    project_context = _build_project_context(project, user.id, db)
+    system_prompt = role_prompt.format(
+        integrations_context=integrations_context,
+        user_name=user.name,
+        user_role=user.role.value.replace("_", " ").title(),
+    )
+    system_prompt += f"\n\nProject context:\n{project_context}\n"
+
+    instruction = (
+        f"Generate exactly {limit} short starter questions this user could ask you right now. "
+        "Rules:\n"
+        "- Each on its own line, no numbering, no bullets, no quotes.\n"
+        "- Keep each under 12 words, phrased as a question or request.\n"
+        "- Only reference systems that are actually connected (see the integrations above).\n"
+        "- Prefer the user's scoped/active project and use its real name or keys when relevant.\n"
+        "- Do NOT call any tools or include tool-call tags; just output the plain lines."
+    )
+
+    try:
+        llm = ChatOpenAI(
+            model=settings.orchestrator_model,
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+            temperature=0.4,
+        )
+        response = await llm.ainvoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=instruction)]
+        )
+        raw = response.content if hasattr(response, "content") else str(response)
+        raw = clean_tool_markup(raw if isinstance(raw, str) else str(raw))
+        suggestions = _parse_suggestion_lines(raw, limit)
+        if suggestions:
+            return suggestions
+    except Exception:
+        logger.exception("Failed to generate LLM suggestions; using fallback")
+
+    return _fallback_suggestions(user.role.value, integrations, limit)
