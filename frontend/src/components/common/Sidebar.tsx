@@ -40,29 +40,8 @@ export default function Sidebar() {
         <p className="text-xs text-gray-400 mt-1">AI-Powered SDLC Platform</p>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-1">
-        {navigation.map((item) => {
-          const isActive = pathname?.startsWith(item.href);
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                isActive
-                  ? "bg-blue-600 text-white"
-                  : "text-gray-300 hover:bg-gray-800 hover:text-white"
-              }`}
-            >
-              <span>{item.icon}</span>
-              <span>{item.name}</span>
-            </Link>
-          );
-        })}
-      </nav>
-
       {/* Projects selection */}
-      <div className="p-4 border-t border-gray-700">
+      <div className="p-4 border-b border-gray-700">
         <div className="flex items-center justify-between mb-2">
           <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
             Projects
@@ -108,6 +87,27 @@ export default function Sidebar() {
           </div>
         )}
       </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 p-4 space-y-1">
+        {navigation.map((item) => {
+          const isActive = pathname?.startsWith(item.href);
+          return (
+            <Link
+              key={item.name}
+              href={item.href}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                isActive
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-300 hover:bg-gray-800 hover:text-white"
+              }`}
+            >
+              <span>{item.icon}</span>
+              <span>{item.name}</span>
+            </Link>
+          );
+        })}
+      </nav>
 
       {/* User section */}
       <div className="p-4 border-t border-gray-700">
